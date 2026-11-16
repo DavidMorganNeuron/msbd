@@ -1,0 +1,2 @@
+-- Prepared migration for future removal of legacy guru role. Do not run before application code is migrated.
+-- CREATE ROLE guru; -- legacy role placeholder, retained only to document a future cleanup.

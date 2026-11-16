@@ -1,0 +1,146 @@
+import Alpine from 'alpinejs';
+import './dropdown';
+import './validasi';
+
+window.Alpine = Alpine;
+Alpine.start();
+
+document.querySelectorAll('[data-waktu-real-time]').forEach((clock) => {
+    const format = new Intl.DateTimeFormat('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23',
+    });
+
+    const update = () => {
+        const now = new Date();
+        clock.dateTime = now.toISOString();
+        clock.textContent = format.format(now);
+    };
+
+    update();
+    window.setInterval(update, 1000);
+});
+
+const formatTanggalJakarta = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+});
+const formatLabelTanggalJadwal = new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta',
+    day: 'numeric',
+    month: 'short',
+});
+
+document.querySelectorAll('[data-jadwal-picker]').forEach((picker) => {
+    const tabs = Array.from(picker.querySelectorAll('[data-hari-tab]'));
+    const panels = Array.from(picker.querySelectorAll('[data-hari-panel]'));
+    if (tabs.length === 0) return;
+
+    let pilihanManual = false;
+    let hariTerakhir = null;
+
+    const pilihHari = (nomorHari) => {
+        const tabAktif = tabs.find((tab) => Number(tab.dataset.hariTab) === nomorHari) || tabs[0];
+        const hariAktif = Number(tabAktif.dataset.hariTab);
+
+        tabs.forEach((tab) => {
+            const aktif = tab === tabAktif;
+            const tanggal = tab.querySelector('[data-hari-tanggal]');
+
+            tab.setAttribute('aria-selected', String(aktif));
+            tab.tabIndex = aktif ? 0 : -1;
+            tab.classList.toggle('border-flame', aktif);
+            tab.classList.toggle('bg-flame', aktif);
+            tab.classList.toggle('text-white', aktif);
+            tab.classList.toggle('shadow-sm', aktif);
+            tab.classList.toggle('border-line', !aktif);
+            tab.classList.toggle('bg-white', !aktif);
+            tab.classList.toggle('text-ink', !aktif);
+            tab.classList.toggle('hover:bg-tint', !aktif);
+            if (tanggal) {
+                tanggal.classList.toggle('text-white/80', aktif);
+                tanggal.classList.toggle('text-mute', !aktif);
+            }
+        });
+
+        panels.forEach((panel) => {
+            panel.hidden = Number(panel.dataset.hariPanel) !== hariAktif;
+        });
+    };
+
+    const perbaruiTanggal = () => {
+        const bagianTanggal = formatTanggalJakarta.formatToParts(new Date());
+        const ambilBagian = (tipe) => Number(bagianTanggal.find((bagian) => bagian.type === tipe)?.value);
+        const tanggalJakarta = new Date(Date.UTC(ambilBagian('year'), ambilBagian('month') - 1, ambilBagian('day'), 12));
+        const hariIni = tanggalJakarta.getUTCDay() || 7;
+        const seninMingguIni = new Date(tanggalJakarta);
+        seninMingguIni.setUTCDate(tanggalJakarta.getUTCDate() - hariIni + 1);
+
+        tabs.forEach((tab) => {
+            const tanggalTab = new Date(seninMingguIni);
+            tanggalTab.setUTCDate(seninMingguIni.getUTCDate() + Number(tab.dataset.hariTab) - 1);
+            const waktu = tab.querySelector('[data-hari-tanggal]');
+
+            if (waktu) {
+                waktu.dateTime = tanggalTab.toISOString().slice(0, 10);
+                waktu.textContent = formatLabelTanggalJadwal.format(tanggalTab);
+            }
+        });
+
+        if (hariIni !== hariTerakhir) {
+            hariTerakhir = hariIni;
+            if (!pilihanManual) {
+                const hariDefault = tabs.some((tab) => Number(tab.dataset.hariTab) === hariIni)
+                    ? hariIni
+                    : Number(picker.dataset.defaultDay) || Number(tabs[0].dataset.hariTab);
+                pilihHari(hariDefault);
+            }
+        }
+    };
+
+    tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+            pilihanManual = true;
+            pilihHari(Number(tab.dataset.hariTab));
+        });
+    });
+
+    perbaruiTanggal();
+    window.setInterval(perbaruiTanggal, 60000);
+});
+
+document.querySelectorAll('[data-jadwal-mode-switch]').forEach((switcher) => {
+    const tombolMode = Array.from(switcher.querySelectorAll('[data-jadwal-mode-button]'));
+    const panelMode = Array.from(switcher.querySelectorAll('[data-jadwal-mode-panel]'));
+
+    const pilihMode = (mode) => {
+        tombolMode.forEach((tombol) => {
+            const aktif = tombol.dataset.jadwalModeButton === mode;
+            tombol.setAttribute('aria-pressed', String(aktif));
+            tombol.classList.toggle('bg-flame', aktif);
+            tombol.classList.toggle('text-white', aktif);
+            tombol.classList.toggle('shadow-sm', aktif);
+            tombol.classList.toggle('text-mute', !aktif);
+            tombol.classList.toggle('hover:text-ink', !aktif);
+        });
+
+        panelMode.forEach((panel) => {
+            panel.hidden = panel.dataset.jadwalModePanel !== mode;
+        });
+    };
+
+    tombolMode.forEach((tombol) => {
+        tombol.addEventListener('click', () => pilihMode(tombol.dataset.jadwalModeButton));
+    });
+
+    pilihMode('harian');
+});
