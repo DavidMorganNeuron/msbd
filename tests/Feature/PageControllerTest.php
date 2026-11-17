@@ -47,6 +47,15 @@ class PageControllerTest extends TestCase
         $this->assertNotSame($halamanPertama->getContent(), $halamanKedua->getContent());
     }
 
+    public function test_homeroom_home_redirects_to_the_class_roster(): void
+    {
+        [, $session] = $this->createWaliKelas();
+
+        $this->withSession($session)
+            ->get(route('beranda'))
+            ->assertRedirect(route('guru.kelas'));
+    }
+
     public function test_teacher_note_history_paginates_after_ten_records(): void
     {
         [$idGuru, $session] = $this->createWaliKelas();
@@ -76,7 +85,7 @@ class PageControllerTest extends TestCase
             ->assertSee('Menampilkan 11-11 dari 11 catatan');
     }
 
-    public function test_attendance_and_report_pages_use_the_first_assigned_class_as_read_only_text(): void
+    public function test_attendance_page_uses_the_first_assigned_class_as_read_only_text(): void
     {
         [$idGuru, $session] = $this->createWaliKelas();
         $idSemester = $this->createSemester();
@@ -91,61 +100,36 @@ class PageControllerTest extends TestCase
             ->assertSee('<input class="input" id="kelas" type="text" value="X MIA 1" readonly>', false)
             ->assertDontSee('<select class="input" id="kelas"', false);
 
-        $this->withSession($session)
-            ->get(route('guru.rapor', ['kelas' => $idKelasKedua]))
-            ->assertOk()
-            ->assertSee('<input class="input" id="kelas" type="text" value="X MIA 1" readonly>', false)
-            ->assertDontSee('<select class="input" id="kelas"', false);
     }
 
-    public function test_teacher_schedule_uses_a_daily_picker_with_class_details(): void
+    public function test_homeroom_schedule_is_not_exposed_in_the_route_or_navigation(): void
     {
-        [$idGuru, $session] = $this->createWaliKelas();
-        $idSemester = $this->createSemester();
-        $idKelas = $this->createClass('X MIA 1');
-        $idMapel = (int) DB::table('mata_pelajaran')->insertGetId([
-            'nama_mapel' => 'Matematika Wajib',
-            'is_aktif' => true,
-        ], 'id_mata_pelajaran');
-
-        DB::table('jadwal_pelajaran')->insert([
-            'id_kelas' => $idKelas,
-            'id_semester' => $idSemester,
-            'id_mata_pelajaran' => $idMapel,
-            'id_guru' => $idGuru,
-            'hari' => 2,
-            'jam_mulai' => '07:30:00',
-            'jam_selesai' => '09:00:00',
-            'ruang' => 'Ruang X MIA 1',
-        ]);
-        DB::table('jadwal_pelajaran')->insert([
-            'id_kelas' => $idKelas,
-            'id_semester' => $idSemester,
-            'id_mata_pelajaran' => $idMapel,
-            'id_guru' => $idGuru,
-            'hari' => 7,
-            'jam_mulai' => '10:00:00',
-            'jam_selesai' => '10:40:00',
-            'ruang' => 'Ruang X MIA 1',
-        ]);
-
-        $hariDefault = (int) now('Asia/Jakarta')->dayOfWeekIso;
-        if ($hariDefault > 6) {
-            $hariDefault = 1;
-        }
+        [, $session] = $this->createWaliKelas();
 
         $this->withSession($session)
-            ->get(route('guru.jadwal'))
+            ->get('/guru/jadwal')
+            ->assertNotFound();
+
+        $this->withSession($session)
+            ->get(route('guru.kelas'))
             ->assertOk()
-            ->assertSee('data-jadwal-picker', false)
-            ->assertSee('data-default-day="'.$hariDefault.'"', false)
-            ->assertSee('data-hari-tab="2"', false)
-            ->assertSee('Matematika Wajib')
-            ->assertSee('Kelas')
-            ->assertSee('X MIA 1')
-            ->assertSee('Ruang')
-            ->assertDontSee('data-jadwal-mode-switch', false)
-            ->assertSee('data-hari-tab="7"', false);
+            ->assertDontSee('Jadwal Mengajar');
+    }
+
+    public function test_principal_navigation_hides_ppdb_references_and_route_is_not_found(): void
+    {
+        $idRole = $this->createRole('kepsek');
+        $idPengguna = $this->createAccount('kepsek-test', $idRole);
+        $session = $this->sessionFor($idPengguna, 'kepsek-test', 'kepsek');
+
+        $this->withSession($session)
+            ->get(route('akun.sandi'))
+            ->assertOk()
+            ->assertDontSee('Data Referensi PPDB');
+
+        $this->withSession($session)
+            ->get('/kepsek/referensi')
+            ->assertNotFound();
     }
 
     public function test_student_schedule_defaults_to_daily_mode_and_keeps_the_full_roster(): void
@@ -191,50 +175,120 @@ class PageControllerTest extends TestCase
             ->assertDontSee('data-hari-tab="7"', false);
     }
 
-    public function test_students_only_see_reports_after_they_are_finalized(): void
+    public function test_student_report_page_is_removed_from_navigation_and_route(): void
     {
         $idRole = $this->createRole('siswa');
         $idPengguna = $this->createAccount('siswa-test', $idRole);
-        $idSemester = $this->createSemester();
-        $idKelas = $this->createClass('X MIA 1');
-        $idSiswa = $this->createStudent('Siswa Test', $idPengguna);
-        $idAnggota = $this->assignStudent($idSiswa, $idKelas, $idSemester);
-        $idMapel = (int) DB::table('mata_pelajaran')->insertGetId([
-            'nama_mapel' => 'Biologi',
-            'is_aktif' => true,
-        ], 'id_mata_pelajaran');
-        $idRapor = (int) DB::table('rapor')->insertGetId([
-            'id_anggota' => $idAnggota,
-            'id_semester' => $idSemester,
-            'status_rapor' => 'draft',
-            'rata_rata' => 92,
-            'jumlah_sakit' => 0,
-            'jumlah_izin' => 0,
-            'jumlah_alpa' => 0,
-            'catatan_wali' => 'Catatan pribadi',
-        ], 'id_rapor');
-        DB::table('detail_rapor')->insert([
-            'id_rapor' => $idRapor,
-            'id_mapel' => $idMapel,
-            'nilai_akhir' => 92,
-        ]);
         $session = $this->sessionFor($idPengguna, 'siswa-test', 'siswa');
 
         $this->withSession($session)
-            ->get(route('siswa.rapor'))
+            ->get(route('siswa.dashboard'))
             ->assertOk()
-            ->assertSee('Rapor belum tersedia')
-            ->assertDontSee('Catatan pribadi')
-            ->assertDontSee('Biologi');
-
-        DB::table('rapor')->where('id_rapor', $idRapor)->update(['status_rapor' => 'final']);
+            ->assertDontSee('/siswa/rapor');
 
         $this->withSession($session)
-            ->get(route('siswa.rapor'))
+            ->get('/siswa/rapor')
+            ->assertNotFound();
+    }
+
+    public function test_student_profile_renders_database_backed_data_without_a_linked_ppdb_record(): void
+    {
+        $idRole = $this->createRole('siswa');
+        $idPengguna = $this->createAccount('siswa-profil', $idRole);
+        $idSiswa = $this->createStudent('Siswa Profil Test', $idPengguna);
+        DB::table('agama')->insert(['id_agama' => 1, 'nama_agama' => 'Kristen']);
+        DB::table('status_siswa')->insert(['id_status_siswa' => 1, 'nama_status' => 'Aktif']);
+        DB::table('siswa')->where('id_siswa', $idSiswa)->update([
+            'id_agama' => 1,
+            'id_status_siswa' => 1,
+        ]);
+
+        $this->withSession($this->sessionFor($idPengguna, 'siswa-profil', 'siswa'))
+            ->get(route('siswa.profil'))
             ->assertOk()
-            ->assertSee('Biologi')
-            ->assertSee('Final')
-            ->assertSee('Catatan pribadi');
+            ->assertSee('Siswa Profil Test')
+            ->assertSee('Kristen')
+            ->assertSee('Data formulir PPDB belum terhubung ke akun ini.');
+    }
+
+    public function test_student_profile_renders_linked_ppdb_data_with_an_active_religion(): void
+    {
+        $idRole = $this->createRole('siswa');
+        $idPengguna = $this->createAccount('siswa-profil-ppdb', $idRole);
+        $idSiswa = $this->createStudent('Siswa Profil PPDB', $idPengguna);
+        DB::table('agama')->insert([
+            'id_agama' => 1,
+            'nama_agama' => 'Islam',
+            'is_aktif' => true,
+        ]);
+        DB::table('siswa')->where('id_siswa', $idSiswa)->update(['id_agama' => 1]);
+        DB::table('pendaftaran_ppdb')->insert([
+            'id_pendaftaran' => 1,
+            'nisn' => DB::table('siswa')->where('id_siswa', $idSiswa)->value('nisn'),
+            'nama_calon_siswa' => 'Nama Arsip PPDB',
+            'id_agama' => 1,
+            'diajukan_pada' => now(),
+        ]);
+        DB::table('pekerjaan')->insert([
+            'id_pekerjaan' => 7,
+            'nama_pekerjaan' => 'PNS/ASN',
+        ]);
+        DB::table('ppdb_orang_tua')->insert([
+            'id_pendaftaran' => 1,
+            'hubungan' => 'ayah',
+            'id_pekerjaan' => 7,
+        ]);
+
+        $this->withSession($this->sessionFor($idPengguna, 'siswa-profil-ppdb', 'siswa'))
+            ->get(route('siswa.profil'))
+            ->assertOk()
+            ->assertSee('Nama Arsip PPDB')
+            ->assertSee('PNS/TNI/Polri');
+    }
+
+    public function test_student_confirmation_displays_kk_and_school_from_the_linked_ppdb_registration(): void
+    {
+        $idRole = $this->createRole('siswa');
+        $idPengguna = $this->createAccount('siswa-konfirmasi-ppdb', $idRole);
+        $idSiswa = $this->createStudent('Siswa Konfirmasi', $idPengguna);
+        $idPendaftaran = (int) DB::table('pendaftaran_ppdb')->insertGetId([
+            'nisn' => DB::table('siswa')->where('id_siswa', $idSiswa)->value('nisn'),
+            'nama_calon_siswa' => 'Siswa Konfirmasi',
+            'no_kk' => '3273010101010001',
+            'sekolah_asal' => 'SMP Negeri 1 Bandung',
+        ], 'id_pendaftaran');
+        DB::table('dokumen_siswa')->insert([
+            'id_siswa' => $idSiswa,
+            'id_pendaftaran' => $idPendaftaran,
+            'jenis_dokumen' => 'kk',
+        ]);
+        DB::table('periode_update')->insert([
+            'nama_periode' => 'Periode 2026',
+            'status' => 'ditutup',
+            'tanggal_mulai' => '2026-01-01',
+            'tanggal_selesai' => '2026-12-31',
+        ]);
+
+        $this->withSession($this->sessionFor($idPengguna, 'siswa-konfirmasi-ppdb', 'siswa'))
+            ->get(route('siswa.konfirmasi'))
+            ->assertOk()
+            ->assertSee('3273010101010001')
+            ->assertSee('SMP Negeri 1 Bandung');
+    }
+
+    public function test_homeroom_report_page_is_removed_from_navigation_and_route(): void
+    {
+        [, $session] = $this->createWaliKelas();
+
+        $this->withSession($session)
+            ->get(route('guru.kelas'))
+            ->assertOk()
+            ->assertDontSee('/guru/rapor')
+            ->assertDontSee('Rapor Siswa');
+
+        $this->withSession($session)
+            ->get('/guru/rapor')
+            ->assertNotFound();
     }
 
     public function test_student_profile_displays_parent_data_labels_instead_of_codes(): void
@@ -282,6 +336,20 @@ class PageControllerTest extends TestCase
             foreach ([
                 'detail_rapor',
                 'rapor',
+                'ppdb_keluar',
+                'ppdb_beasiswa',
+                'ppdb_prestasi',
+                'ppdb_orang_tua',
+                'ppdb_periodik',
+                'ppdb_alamat',
+                'dokumen_siswa',
+                'pendaftaran_ppdb',
+                'periode_update',
+                'orang_tua_wali',
+                'alamat_siswa',
+                'agama',
+                'status_siswa',
+                'sekolah',
                 'detail_absensi',
                 'sesi_absensi',
                 'jadwal_pelajaran',
@@ -293,6 +361,8 @@ class PageControllerTest extends TestCase
                 'mata_pelajaran',
                 'kelas',
                 'semester',
+                'tahun_ajaran',
+                'pekerjaan',
                 'siswa',
                 'guru',
                 'pengguna',
@@ -329,7 +399,120 @@ class PageControllerTest extends TestCase
             $table->id('id_siswa');
             $table->unsignedBigInteger('id_pengguna')->nullable();
             $table->string('nama_lengkap');
+            $table->string('nis')->nullable();
             $table->string('nisn')->nullable();
+            $table->string('nik')->nullable();
+            $table->string('jenis_kelamin', 2)->nullable();
+            $table->string('tempat_lahir')->nullable();
+            $table->date('tanggal_lahir')->nullable();
+            $table->string('email')->nullable();
+            $table->string('no_telepon')->nullable();
+            $table->unsignedBigInteger('id_agama')->nullable();
+            $table->unsignedBigInteger('id_status_siswa')->nullable();
+            $table->unsignedBigInteger('id_sekolah_asal')->nullable();
+        });
+
+        Schema::create('agama', function (Blueprint $table) {
+            $table->id('id_agama');
+            $table->string('nama_agama');
+            $table->boolean('is_aktif')->default(true);
+        });
+
+        Schema::create('status_siswa', function (Blueprint $table) {
+            $table->id('id_status_siswa');
+            $table->string('nama_status');
+        });
+
+        Schema::create('sekolah', function (Blueprint $table) {
+            $table->id('id_sekolah');
+            $table->string('nama_sekolah');
+        });
+
+        Schema::create('alamat_siswa', function (Blueprint $table) {
+            $table->id('id_alamat');
+            $table->unsignedBigInteger('id_siswa');
+            $table->text('alamat')->nullable();
+            $table->string('rt')->nullable();
+            $table->string('rw')->nullable();
+            $table->string('kelurahan')->nullable();
+            $table->string('kecamatan')->nullable();
+            $table->string('kota')->nullable();
+            $table->string('provinsi')->nullable();
+            $table->string('kode_pos')->nullable();
+        });
+
+        Schema::create('orang_tua_wali', function (Blueprint $table) {
+            $table->id('id_orang_tua_wali');
+            $table->unsignedBigInteger('id_siswa');
+            $table->string('hubungan');
+            $table->string('nama_lengkap')->nullable();
+            $table->string('no_telepon')->nullable();
+            $table->string('email')->nullable();
+            $table->text('alamat')->nullable();
+        });
+
+        Schema::create('pendaftaran_ppdb', function (Blueprint $table) {
+            $table->id('id_pendaftaran');
+            $table->string('nisn')->nullable();
+            $table->string('nama_calon_siswa')->nullable();
+            $table->string('no_kk')->nullable();
+            $table->string('sekolah_asal')->nullable();
+            $table->unsignedBigInteger('id_agama')->nullable();
+            $table->timestamp('diajukan_pada')->nullable();
+            $table->boolean('persetujuan_ortu')->default(false);
+            $table->boolean('pernyataan')->default(false);
+            $table->unsignedSmallInteger('langkah_terakhir')->default(0);
+        });
+
+        Schema::create('periode_update', function (Blueprint $table) {
+            $table->id('id_periode_update');
+            $table->unsignedBigInteger('id_tahun_ajaran')->nullable();
+            $table->string('nama_periode');
+            $table->string('status');
+            $table->date('tanggal_mulai');
+            $table->date('tanggal_selesai');
+        });
+
+        Schema::create('ppdb_alamat', function (Blueprint $table) {
+            $table->id('id_alamat_ppdb');
+            $table->unsignedBigInteger('id_pendaftaran');
+        });
+
+        Schema::create('ppdb_periodik', function (Blueprint $table) {
+            $table->id('id_periodik');
+            $table->unsignedBigInteger('id_pendaftaran');
+        });
+
+        Schema::create('ppdb_orang_tua', function (Blueprint $table) {
+            $table->id('id_orang_tua');
+            $table->unsignedBigInteger('id_pendaftaran');
+            $table->string('hubungan')->nullable();
+            $table->unsignedBigInteger('id_pekerjaan')->nullable();
+        });
+
+        Schema::create('ppdb_prestasi', function (Blueprint $table) {
+            $table->id('id_prestasi');
+            $table->unsignedBigInteger('id_pendaftaran');
+        });
+
+        Schema::create('ppdb_beasiswa', function (Blueprint $table) {
+            $table->id('id_beasiswa');
+            $table->unsignedBigInteger('id_pendaftaran');
+        });
+
+        Schema::create('ppdb_keluar', function (Blueprint $table) {
+            $table->unsignedBigInteger('id_pendaftaran')->primary();
+        });
+
+        Schema::create('dokumen_siswa', function (Blueprint $table) {
+            $table->id('id_dokumen');
+            $table->unsignedBigInteger('id_siswa')->nullable();
+            $table->unsignedBigInteger('id_pendaftaran')->nullable();
+            $table->string('jenis_dokumen');
+            $table->string('nama_file_asli')->nullable();
+            $table->string('status_verifikasi')->nullable();
+            $table->text('catatan')->nullable();
+            $table->timestamp('diunggah_pada')->nullable();
         });
 
         Schema::create('semester', function (Blueprint $table) {
@@ -338,6 +521,18 @@ class PageControllerTest extends TestCase
             $table->date('tanggal_mulai')->nullable();
             $table->date('tanggal_selesai')->nullable();
             $table->boolean('is_aktif')->default(false);
+        });
+
+        Schema::create('tahun_ajaran', function (Blueprint $table) {
+            $table->id('id_tahun_ajaran');
+            $table->string('nama_tahun_ajaran');
+            $table->boolean('is_aktif')->default(false);
+        });
+
+        Schema::create('pekerjaan', function (Blueprint $table) {
+            $table->id('id_pekerjaan');
+            $table->string('nama_pekerjaan');
+            $table->boolean('is_aktif')->default(true);
         });
 
         Schema::create('kelas', function (Blueprint $table) {
@@ -420,6 +615,8 @@ class PageControllerTest extends TestCase
         Schema::create('sesi_absensi', function (Blueprint $table) {
             $table->id('id_sesi');
             $table->unsignedBigInteger('id_jadwal');
+            $table->unsignedBigInteger('id_kelas')->nullable();
+            $table->unsignedBigInteger('id_semester')->nullable();
             $table->date('tanggal');
         });
 

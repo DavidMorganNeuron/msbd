@@ -4,10 +4,8 @@ namespace App\Http\Controllers\Tu;
 
 use App\Http\Controllers\Controller;
 use App\Models\Kelas;
-use App\Models\KomponenPenilaian;
 use App\Models\MataPelajaran;
 use App\Models\Semester;
-use App\Models\SkalaPredikat;
 use App\Models\TahunAjaran;
 use App\Services\MasterAkademikService;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -36,7 +34,6 @@ class KonfigurasiController extends Controller
             'cari' => $cari,
             'baris' => $this->baris($tab, $sp, $cari),
             'opsi' => $this->opsi($sp),
-            'bobot' => $tab === 'komponen' ? $this->svc->ringkasanBobot() : null,
         ]);
     }
 
@@ -120,24 +117,6 @@ class KonfigurasiController extends Controller
                 ],
                 'kolom' => [['Kode', 'kode_mapel'], ['Mata pelajaran', 'nama_mapel'], ['Status', 'is_aktif', 'aktif']],
             ],
-            'komponen' => [
-                'judul' => 'Komponen Penilaian', 'model' => KomponenPenilaian::class, 'pk' => 'id_komponen', 'jenis' => 'komponen', 'cari' => 'k.nama_komponen',
-                'fields' => [
-                    ['name' => 'nama_komponen', 'label' => 'Komponen', 'type' => 'text', 'max' => 120, 'required' => true],
-                    ['name' => 'bobot_persen', 'label' => 'Bobot (%)', 'type' => 'num', 'required' => true],
-                ],
-                'kolom' => [['Komponen', 'nama_komponen'], ['Bobot (%)', 'bobot_persen', 'num']],
-            ],
-            'predikat' => [
-                'judul' => 'Skala Predikat', 'model' => SkalaPredikat::class, 'pk' => 'id_predikat', 'jenis' => 'predikat', 'cari' => 'p.huruf',
-                'fields' => [
-                    ['name' => 'huruf', 'label' => 'Huruf', 'type' => 'text', 'max' => 5, 'required' => true],
-                    ['name' => 'nilai_min', 'label' => 'Nilai minimum', 'type' => 'num', 'required' => true],
-                    ['name' => 'nilai_maks', 'label' => 'Nilai maksimum', 'type' => 'num', 'required' => true],
-                    ['name' => 'deskripsi', 'label' => 'Deskripsi', 'type' => 'text', 'max' => 255],
-                ],
-                'kolom' => [['Huruf', 'huruf'], ['Nilai min', 'nilai_min', 'num'], ['Nilai maks', 'nilai_maks', 'num'], ['Deskripsi', 'deskripsi']],
-            ],
         ];
     }
 
@@ -160,8 +139,6 @@ class KonfigurasiController extends Controller
                 ->select('s.*', 't.nama_tahun_ajaran')->orderByDesc('t.tanggal_mulai')->orderBy('s.tanggal_mulai'),
             'kelas' => $this->queryKelas(),
             'mapel' => DB::table('mata_pelajaran as m')->select('m.*')->orderBy('m.nama_mapel'),
-            'komponen' => DB::table('komponen_penilaian as k')->select('k.*')->orderBy('k.id_komponen'),
-            'predikat' => DB::table('skala_predikat as p')->select('p.*')->orderByDesc('p.nilai_min'),
         };
 
         if ($cari !== '') {
@@ -248,13 +225,6 @@ class KonfigurasiController extends Controller
                 'kode_mapel' => ['alpha_dash', Rule::unique('mata_pelajaran', 'kode_mapel')->ignore($id, 'id_mata_pelajaran')],
                 'nama_mapel' => [Rule::unique('mata_pelajaran', 'nama_mapel')->ignore($id, 'id_mata_pelajaran')],
             ],
-            'komponen' => [
-                'nama_komponen' => [Rule::unique('komponen_penilaian', 'nama_komponen')->ignore($id, 'id_komponen')],
-            ],
-            'predikat' => [
-                'huruf' => [Rule::unique('skala_predikat', 'huruf')->ignore($id, 'id_predikat')],
-                'nilai_maks' => ['gte:nilai_min'],
-            ],
         };
         foreach ($tambahan as $kolom => $aturan) {
             if (isset($rules[$kolom])) {
@@ -297,12 +267,6 @@ class KonfigurasiController extends Controller
                 break;
             case 'mapel':
                 $id ? MataPelajaran::findOrFail($id)->update($data) : MataPelajaran::create($data);
-                break;
-            case 'komponen':
-                $this->svc->simpanKomponen($data, $id ? KomponenPenilaian::findOrFail($id) : null);
-                break;
-            case 'predikat':
-                $this->svc->simpanPredikat($data, $id ? SkalaPredikat::findOrFail($id) : null);
                 break;
         }
     }

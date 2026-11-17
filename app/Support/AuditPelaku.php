@@ -24,14 +24,14 @@ class AuditPelaku
             $u = Auth::user() ?? Auth::guard('sanctum')->user();
             if (! $u && $req->hasSession() && ($id = $req->session()->get('id_pengguna'))) {
                 $u = Pengguna::query()
-                    ->selectRaw('id_pengguna, COALESCE(username, nama_pengguna) AS username')
+                    ->select(['id_pengguna', 'username'])
                     ->find($id);
             }
         } catch (\Throwable $e) {
             report($e);
         }
 
-        $p = $u ? ['id' => (int) $u->id_pengguna, 'username' => (string) ($u->username ?? $u->nama_pengguna ?? '')] : null;
+        $p = $u ? ['id' => (int) $u->id_pengguna, 'username' => (string) ($u->username ?? '')] : null;
         $req->attributes->set('audit_pelaku', $p);
 
         return $p;

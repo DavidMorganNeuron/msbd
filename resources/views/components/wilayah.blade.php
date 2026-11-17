@@ -8,10 +8,12 @@
             ->get(['id_provinsi', 'nama_provinsi'])
         : collect();
     $provinsiAwal = $daftarProvinsi->firstWhere('nama_provinsi', $provinsiTerpilih);
-    $daftarKabupaten = $provinsiAwal && \Illuminate\Support\Facades\Schema::hasTable('kota')
+    $daftarKabupatenKota = $provinsiAwal && \Illuminate\Support\Facades\Schema::hasTable('kota')
         ? \App\Models\Kota::query()
             ->where('id_provinsi', $provinsiAwal->id_provinsi)
-            ->where('nama_kota', 'like', 'Kabupaten %')
+            ->where(fn ($query) => $query
+                ->where('nama_kota', 'like', 'Kabupaten %')
+                ->orWhere('nama_kota', 'like', 'Kota %'))
             ->orderBy('nama_kota')
             ->get(['id_kota', 'nama_kota'])
         : collect();
@@ -30,12 +32,12 @@
         </select>
     </div>
     <div class="min-w-0">
-        <label class="label" for="w-kota">Kabupaten</label>
+        <label class="label" for="w-kota">Kabupaten/Kota</label>
         <select class="input min-w-0 disabled:bg-paper disabled:text-mute/70 disabled:cursor-not-allowed"
                 id="w-kota" name="kota" @disabled(! $provinsiAwal) @if ($wajib) data-wajib @endif>
-            <option value="">{{ $provinsiAwal ? 'Pilih Kabupaten' : 'Pilih Provinsi dulu' }}</option>
-            @foreach ($daftarKabupaten as $kabupatenItem)
-                <option value="{{ $kabupatenItem->nama_kota }}" @selected($kotaTerpilih === $kabupatenItem->nama_kota)>{{ $kabupatenItem->nama_kota }}</option>
+            <option value="">{{ $provinsiAwal ? 'Pilih Kabupaten/Kota' : 'Pilih Provinsi dulu' }}</option>
+            @foreach ($daftarKabupatenKota as $kabupatenKotaItem)
+                <option value="{{ $kabupatenKotaItem->nama_kota }}" @selected($kotaTerpilih === $kabupatenKotaItem->nama_kota)>{{ $kabupatenKotaItem->nama_kota }}</option>
             @endforeach
         </select>
     </div>
@@ -54,46 +56,46 @@
     var kota = document.getElementById('w-kota');
     var url = @json(route('wilayah.kabupaten', ['provinsi' => '__ID__']));
 
-    function isiKabupaten(daftar) {
+    function isiKabupatenKota(daftar) {
         kota.innerHTML = '';
 
         var placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.textContent = daftar.length ? 'Pilih Kabupaten' : 'Kabupaten belum tersedia';
+        placeholder.textContent = daftar.length ? 'Pilih Kabupaten/Kota' : 'Kabupaten/Kota belum tersedia';
         kota.appendChild(placeholder);
 
-        daftar.forEach(function (kabupaten) {
+        daftar.forEach(function (kabupatenKota) {
             var opsi = document.createElement('option');
-            opsi.value = kabupaten.nama;
-            opsi.textContent = kabupaten.nama;
+            opsi.value = kabupatenKota.nama;
+            opsi.textContent = kabupatenKota.nama;
             kota.appendChild(opsi);
         });
 
         kota.disabled = daftar.length === 0;
     }
 
-    function muatKabupaten() {
+    function muatKabupatenKota() {
         var opsi = prov.options[prov.selectedIndex];
         var idProvinsi = opsi ? opsi.dataset.id : '';
 
         if (!idProvinsi) {
-            isiKabupaten([]);
+            isiKabupatenKota([]);
             return;
         }
 
         kota.disabled = true;
         fetch(url.replace('__ID__', idProvinsi), { headers: { Accept: 'application/json' } })
             .then(function (respons) {
-                if (!respons.ok) throw new Error('Gagal memuat data kabupaten.');
+                if (!respons.ok) throw new Error('Gagal memuat data kabupaten/kota.');
                 return respons.json();
             })
-            .then(function (data) { isiKabupaten(data); })
+            .then(function (data) { isiKabupatenKota(data); })
             .catch(function () {
-                isiKabupaten([]);
-                kota.options[0].textContent = 'Gagal memuat kabupaten. Pilih ulang provinsi.';
+                isiKabupatenKota([]);
+                kota.options[0].textContent = 'Gagal memuat kabupaten/kota. Pilih ulang provinsi.';
             });
     }
 
-    prov.addEventListener('change', muatKabupaten);
+    prov.addEventListener('change', muatKabupatenKota);
 })();
 </script>

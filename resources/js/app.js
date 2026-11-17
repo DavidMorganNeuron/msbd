@@ -5,6 +5,30 @@ import './validasi';
 window.Alpine = Alpine;
 Alpine.start();
 
+document.querySelectorAll('[data-form-pengajuan]').forEach((form) => {
+    const field = form.querySelector('[data-pengajuan-field]');
+    const proof = form.querySelector('[data-pengajuan-bukti]');
+    const proofLabel = form.querySelector('[data-pengajuan-bukti-label]');
+    const proofHint = form.querySelector('[data-pengajuan-bukti-hint]');
+
+    if (!field || !proof || !proofLabel || !proofHint) return;
+
+    const updateProofRequirement = () => {
+        const required = field.selectedOptions[0]?.dataset.perluBukti === '1';
+
+        proof.required = required;
+        proofLabel.textContent = required
+            ? 'Bukti pendukung (wajib)'
+            : 'Bukti pendukung (opsional)';
+        proofHint.textContent = required
+            ? 'Perubahan data ini memerlukan bukti pendukung.'
+            : 'Bukti pendukung tidak wajib untuk data yang dipilih.';
+    };
+
+    field.addEventListener('change', updateProofRequirement);
+    updateProofRequirement();
+});
+
 document.querySelectorAll('[data-waktu-real-time]').forEach((clock) => {
     const format = new Intl.DateTimeFormat('id-ID', {
         timeZone: 'Asia/Jakarta',

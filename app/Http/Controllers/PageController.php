@@ -38,8 +38,7 @@ class PageController extends Controller
     {
         return match (session('role')) {
             'siswa' => redirect()->route('siswa.dashboard'),
-            'guru' => redirect()->route('guru.jadwal'),
-            'wali_kelas' => redirect()->route('guru.jadwal'),
+            'wali_kelas' => redirect()->route('guru.kelas'),
             'tu' => redirect()->route('tu.dashboard'),
             'kepsek' => redirect()->route('kepsek.dashboard'),
             default => redirect()->route('login'),
@@ -336,18 +335,7 @@ class PageController extends Controller
 
         abort_unless($siswa, 404);
 
-        $idPendaftaran = DB::table('dokumen_siswa')
-            ->where('id_siswa', $siswa->id_siswa)
-            ->whereNotNull('id_pendaftaran')
-            ->orderByDesc('id_pendaftaran')
-            ->value('id_pendaftaran');
-
-        if (! $idPendaftaran && $siswa->nisn) {
-            $idPendaftaran = DB::table('pendaftaran_ppdb')
-                ->where('nisn', $siswa->nisn)
-                ->orderByDesc('id_pendaftaran')
-                ->value('id_pendaftaran');
-        }
+        $idPendaftaran = $this->idPendaftaranSiswa($siswa);
 
         $dokumen = DB::table('dokumen_siswa')
             ->where('id_siswa', $siswa->id_siswa)
@@ -921,7 +909,7 @@ class PageController extends Controller
                 $rapor = DB::table('rapor')
                     ->where('id_anggota', $terpilih['id_keanggotaan'])
                     ->where('id_semester', $semester->id_semester)
-                    ->first();
+                    ->first(['id_rapor']);
 
                 if ($rapor) {
                     $nilai = DB::table('detail_rapor')
@@ -1170,7 +1158,15 @@ class PageController extends Controller
                     ->where('id_anggota', $anggota->id_keanggotaan)
                     ->where('id_semester', $semester->id_semester)
                     ->where('status_rapor', 'final')
-                    ->first();
+                    ->first([
+                        'id_rapor',
+                        'status_rapor',
+                        'rata_rata',
+                        'jumlah_sakit',
+                        'jumlah_izin',
+                        'jumlah_alpa',
+                        'catatan_wali',
+                    ]);
 
                 if ($rapor) {
                     $detail = DB::table('detail_rapor as dr')
@@ -1204,10 +1200,10 @@ class PageController extends Controller
                 ->count(),
             'disahkan' => DB::table('pendaftaran_ppdb')
                 ->where('status_pendaftaran', 'diterima')
-                ->count(),
+                ->count('id_pendaftaran'),
             'pengajuan' => DB::table('pengajuan_perubahan')
                 ->where('status_pengajuan', 'menunggu')
-                ->count(),
+                ->count('id_pengajuan'),
         ];
 
         $periode = $this->periodeAktifSekarang();
@@ -1384,22 +1380,15 @@ class PageController extends Controller
             abort(404);
         }
 
-        $file = null;
-        $disk = null;
+        $storage = Storage::disk('private');
 
-        foreach (['private', 'public'] as $candidate) {
-            try {
-                if (Storage::disk($candidate)->exists($dokumen->path_file)) {
-                    $file = Storage::disk($candidate)->path($dokumen->path_file);
-                    $disk = $candidate;
-                    break;
-                }
-            } catch (\Throwable $e) {
-                continue;
-            }
+        if (! $storage->exists($dokumen->path_file)) {
+            abort(404);
         }
 
-        if (! $file || ! is_file($file)) {
+        $file = $storage->path($dokumen->path_file);
+
+        if (! is_file($file)) {
             abort(404);
         }
 
@@ -1945,10 +1934,10 @@ class PageController extends Controller
                 ->where('st.kode_status', 'aktif')
                 ->count(),
             'total_guru' => DB::table('guru')->count(),
-            'total_pendaftar' => DB::table('pendaftaran_ppdb')->count(),
+            'total_pendaftar' => DB::table('pendaftaran_ppdb')->count('id_pendaftaran'),
             'disahkan' => DB::table('pendaftaran_ppdb')
                 ->where('status_pendaftaran', 'diterima')
-                ->count(),
+                ->count('id_pendaftaran'),
             'kelengkapan' => null,
             'rata_verifikasi' => null,
         ];
@@ -2025,58 +2014,18 @@ class PageController extends Controller
         ]);
     }
 
-    public function kepsekReferensi()
-    {
-        $pendaftarAktif = DB::table('pendaftaran_ppdb')
-            ->where('status_pendaftaran', '<>', 'draf');
-
-        $sekolahAsal = (clone $pendaftarAktif)
-            ->whereNotNull('sekolah_asal')
-            ->whereRaw("TRIM(sekolah_asal) <> ''")
-            ->select('sekolah_asal')
-            ->selectRaw('COUNT(*) AS jumlah')
-            ->groupBy('sekolah_asal')
-            ->orderByDesc('jumlah')
-            ->orderBy('sekolah_asal')
-            ->limit(20)
-            ->get();
-
-        $wilayahPendaftar = DB::table('ppdb_alamat as a')
-            ->join('pendaftaran_ppdb as p', 'p.id_pendaftaran', '=', 'a.id_pendaftaran')
-            ->where('p.status_pendaftaran', '<>', 'draf');
-
-        $provinsiAsal = (clone $wilayahPendaftar)
-            ->whereNotNull('a.provinsi')
-            ->whereRaw("TRIM(a.provinsi) <> ''")
-            ->select('a.provinsi')
-            ->selectRaw('COUNT(*) AS jumlah')
-            ->groupBy('a.provinsi')
-            ->orderByDesc('jumlah')
-            ->orderBy('a.provinsi')
-            ->limit(20)
-            ->get();
-
-        $kotaAsal = (clone $wilayahPendaftar)
-            ->whereNotNull('a.kota')
-            ->whereRaw("TRIM(a.kota) <> ''")
-            ->select('a.provinsi', 'a.kota')
-            ->selectRaw('COUNT(*) AS jumlah')
-            ->groupBy('a.provinsi', 'a.kota')
-            ->orderByDesc('jumlah')
-            ->orderBy('a.provinsi')
-            ->orderBy('a.kota')
-            ->limit(20)
-            ->get();
-
-        return view('kepsek.referensi', compact('sekolahAsal', 'provinsiAsal', 'kotaAsal'));
-    }
-
     public function pengguna(Request $request)
     {
         $cari = trim($request->query('cari', ''));
 
-        $pengguna = Pengguna::with(['role', 'guru', 'staf'])
-            ->whereHas('role', fn ($query) => $query->whereIn('nama_role', ['tu', 'wali_kelas', 'guru']))
+        $pengguna = Pengguna::query()
+            ->select(['id_pengguna', 'id_role', 'username', 'terakhir_login', 'is_aktif'])
+            ->with([
+                'role:id_role,nama_role',
+                'guru:id_guru,id_pengguna,nama_guru',
+                'staf:id_staf,id_pengguna,nama_staf',
+            ])
+            ->whereHas('role', fn ($query) => $query->whereIn('nama_role', ['tu', 'wali_kelas']))
             ->orderBy('username')
             ->get()
             ->map(function ($u) {
@@ -2089,7 +2038,7 @@ class PageController extends Controller
                         ?? $staf->nama_staf
                         ?? $u->username,
                     'username' => $u->username,
-                    'role' => in_array($u->role->nama_role ?? null, ['wali_kelas', 'guru'], true)
+                    'role' => ($u->role->nama_role ?? null) === 'wali_kelas'
                         ? 'Wali Kelas'
                         : 'Tata Usaha',
                     'login' => $u->terakhir_login ?? '-',
@@ -2139,7 +2088,7 @@ class PageController extends Controller
                 'diubah_pada' => now(),
             ]);
 
-            if (in_array($role->nama_role, ['guru', 'wali_kelas'], true)) {
+            if ($role->nama_role === 'wali_kelas') {
                 Guru::create([
                     'id_pengguna' => $pengguna->id_pengguna,
                     'nip' => $data['nip'] ?: null,
@@ -2172,7 +2121,13 @@ class PageController extends Controller
 
     public function penggunaEdit($id)
     {
-        $user = Pengguna::with(['role', 'guru', 'staf'])
+        $user = Pengguna::query()
+            ->select(['id_pengguna', 'id_role', 'username'])
+            ->with([
+                'role:id_role,nama_role',
+                'guru:id_guru,id_pengguna,nama_guru,nip,no_telepon',
+                'staf:id_staf,id_pengguna,nama_staf,no_telepon',
+            ])
             ->findOrFail($id);
 
         $roles = Role::whereIn('nama_role', ['wali_kelas', 'tu'])->orderBy('id_role')->get();
@@ -2242,7 +2197,7 @@ class PageController extends Controller
                 $user->id_pengguna
             )->first();
 
-            if (in_array($role->nama_role, ['guru', 'wali_kelas'], true)) {
+            if ($role->nama_role === 'wali_kelas') {
                 if ($staf) {
                     $staf->delete();
                 }
@@ -2366,6 +2321,12 @@ class PageController extends Controller
             return DummyData::siswa();
         }
 
+        $idPendaftaran = $this->idPendaftaranSiswa($s);
+        $pendaftaran = $idPendaftaran
+            ? DB::table('pendaftaran_ppdb')
+                ->where('id_pendaftaran', $idPendaftaran)
+                ->first(['no_kk', 'sekolah_asal'])
+            : null;
         $alamat = DB::table('alamat_siswa')
             ->where('id_siswa', $s->id_siswa)
             ->orderBy('id_alamat')
@@ -2373,7 +2334,7 @@ class PageController extends Controller
         $orangTua = DB::table('orang_tua_wali')
             ->where('id_siswa', $s->id_siswa)
             ->orderBy('id_orang_tua_wali')
-            ->get()
+            ->get(['id_orang_tua_wali', 'id_siswa', 'hubungan', 'nama_lengkap', 'no_telepon', 'email', 'alamat'])
             ->unique(fn ($orang) => mb_strtolower($orang->hubungan))
             ->keyBy(fn ($orang) => mb_strtolower($orang->hubungan));
         $ayah = $orangTua->get('ayah');
@@ -2384,13 +2345,20 @@ class PageController extends Controller
             ->where('kk.id_siswa', $s->id_siswa)
             ->orderByDesc('kk.id_keanggotaan')
             ->value('k.nama_kelas');
+        $sekolahAsal = $pendaftaran->sekolah_asal ?? null;
+
+        if (! $sekolahAsal && $s->id_sekolah_asal) {
+            $sekolahAsal = DB::table('sekolah')
+                ->where('id_sekolah', $s->id_sekolah_asal)
+                ->value('nama_sekolah');
+        }
 
         return [
             'nama_lengkap' => $s->nama_lengkap,
             'nis' => $s->nis ?? '-',
             'nisn' => $s->nisn ?? '-',
             'nik' => $s->nik ?? '-',
-            'no_kk' => '-',
+            'no_kk' => $pendaftaran->no_kk ?? '-',
             'jenis_kelamin' => match ($s->jenis_kelamin) {
                 'L' => 'Laki-laki',
                 'P' => 'Perempuan',
@@ -2403,9 +2371,7 @@ class PageController extends Controller
             'agama' => DB::table('agama')->where('id_agama', $s->id_agama)->value('nama_agama') ?? '-',
             'no_hp' => $s->no_telepon ?? '-',
             'email' => $s->email ?? '-',
-            'sekolah_asal' => $s->id_sekolah_asal
-                ? (DB::table('sekolah')->where('id_sekolah', $s->id_sekolah_asal)->value('nama_sekolah') ?? '-')
-                : '-',
+            'sekolah_asal' => $sekolahAsal ?: '-',
             'kelas' => $kelas ?? '-',
             'status' => DB::table('status_siswa')->where('id_status_siswa', $s->id_status_siswa)->value('nama_status') ?? '-',
             'alamat' => $alamat->alamat ?? '-',
@@ -2429,6 +2395,24 @@ class PageController extends Controller
             'wali_email' => $wali->email ?? '-',
             'wali_alamat' => $wali->alamat ?? '-',
         ];
+    }
+
+    private function idPendaftaranSiswa(Siswa $siswa): ?int
+    {
+        $idPendaftaran = DB::table('dokumen_siswa')
+            ->where('id_siswa', $siswa->id_siswa)
+            ->whereNotNull('id_pendaftaran')
+            ->orderByDesc('id_pendaftaran')
+            ->value('id_pendaftaran');
+
+        if (! $idPendaftaran && $siswa->nisn) {
+            $idPendaftaran = DB::table('pendaftaran_ppdb')
+                ->where('nisn', $siswa->nisn)
+                ->orderByDesc('id_pendaftaran')
+                ->value('id_pendaftaran');
+        }
+
+        return $idPendaftaran ? (int) $idPendaftaran : null;
     }
 
     /** Periode update yang sedang berjalan; data contoh dipakai bila tabel masih kosong. */
@@ -2822,7 +2806,9 @@ class PageController extends Controller
             return null;
         }
 
-        return DB::table('guru')->where('id_pengguna', session('id_pengguna'))->first();
+        return DB::table('guru')
+            ->where('id_pengguna', session('id_pengguna'))
+            ->first(['id_guru']);
     }
 
     /** Semester aktif; bila belum ada, semester terbaru dipakai untuk tampilan. */

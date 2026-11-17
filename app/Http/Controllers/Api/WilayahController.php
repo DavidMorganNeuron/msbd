@@ -10,9 +10,11 @@ class WilayahController extends Controller
 {
     public function kabupaten(int $provinsi): JsonResponse
     {
-        $daftarKabupaten = Kota::query()
+        $daftarKabupatenKota = Kota::query()
             ->where('id_provinsi', $provinsi)
-            ->where('nama_kota', 'like', 'Kabupaten %')
+            ->where(fn ($query) => $query
+                ->where('nama_kota', 'like', 'Kabupaten %')
+                ->orWhere('nama_kota', 'like', 'Kota %'))
             ->orderBy('nama_kota')
             ->get(['id_kota', 'nama_kota'])
             ->map(fn (Kota $kota) => [
@@ -21,6 +23,6 @@ class WilayahController extends Controller
             ])
             ->values();
 
-        return response()->json($daftarKabupaten);
+        return response()->json($daftarKabupatenKota);
     }
 }

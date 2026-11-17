@@ -11,6 +11,7 @@ class ReferensiDataSeeder extends Seeder
     {
         $this->jenjangDanTingkat();
         $this->agamaDanPekerjaan();
+        $this->statusSiswa();
         $this->sekolah();
         $this->dokumen();
         $this->alasanDanKehadiran();
@@ -64,10 +65,34 @@ class ReferensiDataSeeder extends Seeder
         }
     }
 
+    private function statusSiswa(): void
+    {
+        foreach ([
+            ['calon', 'Calon Siswa'],
+            ['aktif', 'Aktif'],
+            ['cuti', 'Cuti'],
+            ['mutasi', 'Mutasi'],
+            ['lulus', 'Lulus'],
+            ['keluar', 'Keluar'],
+            ['mengundurkan_diri', 'Mengundurkan Diri'],
+            ['dikeluarkan', 'Dikeluarkan'],
+            ['putus_sekolah', 'Putus Sekolah'],
+            ['meninggal_dunia', 'Meninggal Dunia'],
+        ] as [$kodeStatus, $namaStatus]) {
+            DB::table('status_siswa')->updateOrInsert(
+                ['kode_status' => $kodeStatus],
+                [
+                    'nama_status' => $namaStatus,
+                    'boleh_diubah_siswa' => false,
+                ]
+            );
+        }
+    }
+
     private function sekolah(): void
     {
         $sekolah = [
-            ['id_sekolah' => 1, 'nama_sekolah' => 'SMP Swasta Methodist 2 Medan', 'npsn' => '10260001'],
+            ['nama_sekolah' => 'SMP Swasta Methodist 2 Medan', 'npsn' => '10260001'],
             ['nama_sekolah' => 'SMP Negeri 1 Medan', 'npsn' => '10210001'],
             ['nama_sekolah' => 'SMP Negeri 2 Medan', 'npsn' => '10210002'],
             ['nama_sekolah' => 'SMP Swasta Santo Thomas 1 Medan', 'npsn' => '10260002'],
@@ -75,11 +100,7 @@ class ReferensiDataSeeder extends Seeder
         ];
 
         foreach ($sekolah as $data) {
-            $kunci = isset($data['id_sekolah'])
-                ? ['id_sekolah' => $data['id_sekolah']]
-                : ['nama_sekolah' => $data['nama_sekolah']];
-
-            DB::table('sekolah')->updateOrInsert($kunci, $data + [
+            DB::table('sekolah')->updateOrInsert(['npsn' => $data['npsn']], $data + [
                 'alamat' => 'Medan, Sumatera Utara',
                 'is_aktif' => true,
             ]);
@@ -172,7 +193,7 @@ class ReferensiDataSeeder extends Seeder
                 [
                     'nilai' => $nilai,
                     'deskripsi' => $deskripsi,
-                    'id_pengguna_pengubah' => 1,
+                    'id_pengguna_pengubah' => null,
                     'tgl_diubah' => now(),
                 ]
             );

@@ -13,5 +13,5 @@ return [
     // Role yang boleh mengganti kata sandi sendiri.
     // Role yang tidak ada di daftar ini tidak melihat menu "Ganti Sandi"
     // dan ditolak (403) kalau membuka /akun/sandi. Sandinya di-reset oleh TU.
-    'role_ganti_sandi' => ['siswa', 'guru', 'wali_kelas', 'tu', 'kepsek'],
+    'role_ganti_sandi' => ['siswa', 'wali_kelas', 'tu', 'kepsek'],
 ];

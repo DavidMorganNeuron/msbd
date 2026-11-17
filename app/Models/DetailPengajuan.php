@@ -15,6 +15,14 @@ class DetailPengajuan extends Model
 
     protected $guarded = ['id_detail_pengajuan'];
 
+    protected function casts(): array
+    {
+        return [
+            'nilai_lama' => 'json',
+            'nilai_baru' => 'json',
+        ];
+    }
+
     public function pengajuanPerubahan(): BelongsTo
     {
         return $this->belongsTo(PengajuanPerubahan::class, 'id_pengajuan', 'id_pengajuan');

@@ -1,8 +1,9 @@
-﻿# ORPHAN_REPORT - staging
+# ORPHAN_REPORT - klon latihan Fase 1
 
 ## Metode dan ringkasan hasil
 
-Audit dijalankan pada `msbd_tubes_kel7_staging` (PostgreSQL 18.6) setelah Tahap 1. Katalog FK
+Audit dijalankan pada `msbd_latihan_utama` (PostgreSQL 18.6), klon bertanda
+`FASE1_TRAINING_CLONE`, setelah paket Fase 1. Katalog FK
 dibaca dari `pg_constraint`; setiap FK diperiksa dengan anti-join terhadap seluruh kolom referensi.
 NULL mengikuti semantik `MATCH` PostgreSQL: `MATCH SIMPLE` mengabaikan kunci child yang mengandung
 NULL, sedangkan `MATCH FULL` menghitung kombinasi NULL parsial sebagai pelanggaran. Status
@@ -10,10 +11,10 @@ NULL, sedangkan `MATCH FULL` menghitung kombinasi NULL parsial sebagai pelanggar
 transaksi `READ ONLY`; tidak mengubah data atau schema persisten.
 
 <!-- BEGIN GENERATED FK SUMMARY -->
-- Basis schema_backup.sql: **83 FK**; definisi cocok penuh dengan katalog staging: **83**; definisi berbeda: **0**; tidak ditemukan: **0**; FK katalog di luar basis: **13**.
-- Katalog staging: **96 FK** (93 `VALID`, 3 `NOT VALID`); anti-join menemukan **3 baris yatim**.
-- Tidak ada FK baseline yang hilang dari katalog staging.
-- Tidak ada perbedaan tabel/kolom/parent/ON DELETE pada FK baseline yang ditemukan.
+- Basis schema_backup.sql: **83 FK**; definisi cocok penuh dengan katalog msbd_latihan_utama: **83**; definisi berbeda: **0**; tidak ditemukan: **0**; FK katalog di luar basis: **13**.
+- Katalog msbd_latihan_utama: **96 FK** (93 `VALID`, 3 `NOT VALID`); anti-join menemukan **3 baris yatim**.
+- Tidak ada FK baseline yang hilang dari katalog msbd_latihan_utama.
+- Tidak ada perbedaan tabel/kolom/parent/ON DELETE pada FK baseline yang ditemukan di msbd_latihan_utama.
 - Tidak ada row yatim yang diperbaiki/dihapus oleh audit ini. FK `NOT VALID` dipertahankan sampai pemetaan bisnis dan pembersihan data disetujui; menjalankan `VALIDATE CONSTRAINT` sebelum orphan menjadi nol tidak dilakukan.
 <!-- END GENERATED FK SUMMARY -->
 - PK baseline: 64 kandidat diperiksa; setelah pemetaan `status_siswa`, tidak ada nilai NULL atau
@@ -130,7 +131,3 @@ transaksi `READ ONLY`; tidak mengubah data atau schema persisten.
 | `verifikasi_pendaftaran_id_pendaftaran_fkey` | Ya | `public.verifikasi_pendaftaran` | `id_pendaftaran` | `public.pendaftaran_ppdb` | `id_pendaftaran` | CASCADE | VALID | SIMPLE | 0 | VALID; anti-join tidak menemukan orphan. |
 | `verifikasi_pendaftaran_id_petugas_fkey` | Ya | `public.verifikasi_pendaftaran` | `id_petugas` | `public.pengguna` | `id_pengguna` | RESTRICT | VALID | SIMPLE | 0 | VALID; anti-join tidak menemukan orphan. |
 <!-- END GENERATED FK DETAILS -->
-
-
-
-

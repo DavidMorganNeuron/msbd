@@ -11,6 +11,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Tests\TestCase;
 
 class UploadBerkasAuditFeatureTest extends TestCase
@@ -130,7 +131,6 @@ class UploadBerkasAuditFeatureTest extends TestCase
             $table->id('id_pengguna');
             $table->unsignedBigInteger('id_role')->nullable();
             $table->string('username', 100)->nullable()->unique();
-            $table->string('nama_pengguna', 120)->nullable();
             $table->string('password_hash', 255)->nullable();
             $table->boolean('is_aktif')->default(true);
             $table->timestamp('dibuat_pada')->nullable();
@@ -330,8 +330,8 @@ class UploadBerkasAuditFeatureTest extends TestCase
         ]);
 
         DB::table('pengguna')->insert([
-            ['id_pengguna' => 10, 'id_role' => 1, 'nama_pengguna' => 'tu01', 'password_hash' => 'secret', 'is_aktif' => true],
-            ['id_pengguna' => 20, 'id_role' => 2, 'nama_pengguna' => 'siswa01', 'password_hash' => 'secret', 'is_aktif' => true],
+            ['id_pengguna' => 10, 'id_role' => 1, 'username' => 'tu01', 'password_hash' => 'secret', 'is_aktif' => true],
+            ['id_pengguna' => 20, 'id_role' => 2, 'username' => 'siswa01', 'password_hash' => 'secret', 'is_aktif' => true],
         ]);
 
         DB::table('agama')->insert([
@@ -1098,7 +1098,7 @@ class UploadBerkasAuditFeatureTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_akses_file_lama_di_public_storage_masih_bisa_dibuka_via_route_tu(): void
+    public function test_akses_file_lama_di_public_storage_ditolak_via_route_tu(): void
     {
         $path = 'dokumen-siswa/legacy-berkas.pdf';
         Storage::disk('public')->put($path, 'LEGACY-PDF');
@@ -1115,7 +1115,7 @@ class UploadBerkasAuditFeatureTest extends TestCase
         $this->withoutMiddleware([ValidateCsrfToken::class])
             ->withSession(['id_pengguna' => 10, 'role' => 'tu'])
             ->get('/tu/dokumen/'.$dokumenId)
-            ->assertOk();
+            ->assertNotFound();
     }
 
     public function test_file_lama_remains_unchanged_until_formulir_submission(): void
@@ -1193,13 +1193,45 @@ class UploadBerkasAuditFeatureTest extends TestCase
         $this->assertStringContainsString('Kartu Keluarga', $content);
     }
 
-    public function test_akses_file_public_storage_tidak_dapat_dibuktikan_aman_tanpa_route_download_yang_ada(): void
+    public function test_detail_siswa_tidak_menampilkan_tautan_langsung_ke_public_storage(): void
     {
-        $this->markTestIncomplete('Aplikasi tidak menyediakan route download/preview khusus untuk berkas siswa, dan URL yang dibuat dari Storage::disk("public")->url($path) hanya merupakan URL storage standar. Dalam lingkungan SQLite in-memory dengan Storage::fake(), tidak ada symlink web server nyata yang dapat dibuktikan mengizinkan akses tanpa autentikasi secara aman.');
+        $path = 'dokumen-siswa/legacy-berkas.pdf';
+        Storage::disk('public')->put($path, 'isi berkas');
+        DB::table('dokumen_siswa')->insert([
+            'id_siswa' => 1,
+            'jenis_dokumen' => 'Akta Kelahiran',
+            'nama_file_asli' => 'legacy-berkas.pdf',
+            'path_file' => $path,
+            'status_verifikasi' => 'menunggu',
+            'diunggah_pada' => now(),
+        ]);
+
+        $this->withoutMiddleware([ValidateCsrfToken::class])
+            ->withSession(['id_pengguna' => 10, 'role' => 'tu'])
+            ->get('/tu/siswa/1')
+            ->assertOk()
+            ->assertDontSee(Storage::disk('public')->url($path), false);
     }
 
-    public function test_rollback_penyimpanan_file_jika_storage_gagal_tidak_dapat_diuji_safely(): void
+    public function test_upload_dokumen_tu_melaporkan_kegagalan_storage_tanpa_menyimpan_data(): void
     {
-        $this->markTestIncomplete('Simulasi kegagalan storage pada fake disk bisa dipaksa dengan mock, tetapi itu tidak merepresentasikan alur nyata yang aman atau deterministik. Kode aplikasi juga tidak memiliki transaction atomik file+database, sehingga uji rollback yang akurat memerlukan perubahan kode atau lingkungan hampir-produksi.');
+        Storage::shouldReceive('disk')
+            ->once()
+            ->with('private')
+            ->andThrow(new RuntimeException('Private storage is unavailable.'));
+
+        $this->withoutMiddleware([ValidateCsrfToken::class])
+            ->withSession(['id_pengguna' => 10, 'role' => 'tu'])
+            ->post('/tu/siswa/1/dokumen', [
+                'id_siswa' => '1',
+                'id_jenis_dokumen' => 'Akta Kelahiran',
+                'berkas' => $this->validUploadFixture('gagal-upload.pdf', 'pdf'),
+            ])
+            ->assertServerError();
+
+        $this->assertDatabaseMissing('dokumen_siswa', [
+            'id_siswa' => 1,
+            'jenis_dokumen' => 'Akta Kelahiran',
+        ]);
     }
 }

@@ -3,6 +3,26 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+$pgsqlConnection = function (?string $suffix = null): array {
+    $suffix = $suffix ? '_'.$suffix : '';
+
+    return [
+        'driver' => 'pgsql',
+        'url' => env('DB_URL'),
+        'host' => env('DB_HOST'.$suffix, env('DB_HOST', '127.0.0.1')),
+        'port' => env('DB_PORT'.$suffix, env('DB_PORT', '5432')),
+        'database' => env('DB_DATABASE'.$suffix, env('DB_DATABASE', 'laravel')),
+        'username' => env('DB_USERNAME'.$suffix, env('DB_USERNAME', 'root')),
+        'password' => env('DB_PASSWORD'.$suffix, ''),
+        'charset' => env('DB_CHARSET', 'utf8'),
+        'prefix' => '',
+        'prefix_indexes' => true,
+        'search_path' => env('DB_SEARCH_PATH', 'public, pg_catalog, pg_temp'),
+        'sslmode' => env('DB_SSLMODE', 'prefer'),
+        'timezone' => env('DB_TIMEZONE', 'Asia/Jakarta'),
+    ];
+};
+
 return [
 
     /*
@@ -84,21 +104,13 @@ return [
             ]) : [],
         ],
 
-        'pgsql' => [
-            'driver' => 'pgsql',
-            'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '5432'),
-            'database' => env('DB_DATABASE', 'laravel'),
-            'username' => env('DB_USERNAME', 'root'),
-            'password' => env('DB_PASSWORD', ''),
-            'charset' => env('DB_CHARSET', 'utf8'),
-            'prefix' => '',
-            'prefix_indexes' => true,
-            'search_path' => 'public',
-            'sslmode' => env('DB_SSLMODE', 'prefer'),
-            'timezone' => env('DB_TIMEZONE', 'Asia/Jakarta'),
-        ],
+        'pgsql' => $pgsqlConnection(),
+        'pgsql_login' => $pgsqlConnection(),
+        'pgsql_owner' => $pgsqlConnection('OWNER'),
+        'pgsql_siswa' => $pgsqlConnection('SISWA'),
+        'pgsql_tu' => $pgsqlConnection('TU'),
+        'pgsql_kepsek' => $pgsqlConnection('KEPSEK'),
+        'pgsql_wali_kelas' => $pgsqlConnection('WALI_KELAS'),
 
         'sqlsrv' => [
             'driver' => 'sqlsrv',

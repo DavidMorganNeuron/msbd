@@ -3,12 +3,17 @@
 namespace App\Support;
 
 use App\Models\LogAudit;
+use Illuminate\Support\Facades\DB;
 
-/** Catat satu baris jejak audit secara manual (untuk perubahan lewat DB::table yang tidak melewati observer). */
+/** PostgreSQL audita por trigger; el helper conserva la ruta de respaldo de las pruebas SQLite. */
 class AuditCatat
 {
     public static function tulis(string $tabel, string $operasi, int|string|null $idData, ?array $lama, ?array $baru): void
     {
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            return;
+        }
+
         $p = AuditPelaku::sekarang();
 
         LogAudit::create([

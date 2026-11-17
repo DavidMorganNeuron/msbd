@@ -43,7 +43,6 @@ class WebAuthController extends Controller
         $role = $user?->role?->kode();
         $tujuan = match ($role) {
             'siswa' => route('siswa.dashboard'),
-            'guru' => route('guru.jadwal'),
             'wali_kelas' => route('guru.kelas'),
             'tu' => route('tu.dashboard'),
             'kepsek' => route('kepsek.dashboard'),
@@ -88,7 +87,6 @@ class WebAuthController extends Controller
         $request->session()->regenerate();
 
         $nama = match ($role) {
-            'guru' => $user->guru()->value('nama_guru') ?? $user->username,
             'wali_kelas' => $user->guru()->value('nama_guru') ?? $user->username,
             'tu',
             'kepsek' => $user->staf()->value('nama_staf') ?? $user->username,
@@ -130,9 +128,13 @@ class WebAuthController extends Controller
 
         $idPengguna = $request->session()->get('id_pengguna');
 
-        $pengguna = Pengguna::find($idPengguna);
+        $pengguna = $request->user();
 
-        if (! $pengguna || ! $pengguna->is_aktif) {
+        if (
+            ! $pengguna instanceof Pengguna
+            || (int) $pengguna->id_pengguna !== (int) $idPengguna
+            || ! $pengguna->is_aktif
+        ) {
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
@@ -155,6 +157,7 @@ class WebAuthController extends Controller
         $pengguna->password_hash = Hash::make(
             $request->input('sandi_baru')
         );
+        $pengguna->diubah_pada = now();
 
         $pengguna->save();
 

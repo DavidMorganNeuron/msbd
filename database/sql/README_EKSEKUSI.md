@@ -1,126 +1,122 @@
-# Panduan Eksekusi Fase 1
+# Panduan Eksekusi SQL MSBD
 
-## Status yang terverifikasi
+## Status Fase 2 (pembaruan 17 November 2026)
 
-Tahap 1 sudah diterapkan hanya pada `msbd_tubes_kel7_staging`: perbaikan ID `status_siswa`,
-constraint PK/FK/UNIQUE/CHECK yang ditinjau, dan sinkronisasi sequence. Database utama dan `.env`
-tidak diubah.
+Reset yang diminta telah selesai pada database utama `msbd_tubes_kel7` (PostgreSQL 18.6) setelah
+backup pra-reset diverifikasi. `php artisan migrate:fresh --seed` berhasil; katalog berisi 72 tabel,
+13 view, 27 migrasi, dan 29 trigger aktif. Empat akun demo aktif dan satu record siswa tertaut
+dibuat ulang; seluruh data aplikasi sebelum reset telah terhapus sesuai perilaku `migrate:fresh`.
+Trigger audit mencatat 251 baris selama proses seeding.
 
-Fase 1 **belum selesai**. Run terakhir `dry_run.ps1` menghasilkan 10 PASS dan 0 FAIL; skrip ini
-mengecualikan `dcl/90_hapus_role_guru.sql`, yang dilaporkan SKIP dan tidak dijalankan atau di-dry-run.
-Kandidat logic, view, trigger, role, dan privilege menghasilkan 167 PASS/0 FAIL pada verifier dalam
-transaksi rollback, tetapi belum diterapkan permanen. Verifier katalog staging aktual masih 150 FAIL
-dan 16 PASS. Contoh DML/TCL lulus pada klon disposable, dibersihkan, lalu klonnya dihapus. Database
-utama dan `.env` tidak diubah. Rincian terdapat di [FASE1_LAPORAN.md](./FASE1_LAPORAN.md) dan
+Role PostgreSQL dipulihkan. `app_login` dan empat role bisnis dapat login sebagai non-superuser;
+`app_owner` tetap `NOLOGIN`. Laravel kembali terhubung sebagai `app_login`, dan perintah `migrate`
+berjalan setelah izin ledger migrasi diperbaiki. Verifier privilege menghasilkan 240 PASS/0 FAIL;
+empat login bisnis diuji langsung. Full smoke test UI/aksi empat role belum diulang setelah reset,
+jadi Fase 2 belum dinyatakan diterima penuh. Baca [FASE2_LAPORAN.md](./FASE2_LAPORAN.md) untuk
+bukti, batasan, dan status tiap gerbang.
+
+Backup sebelum reset dan backup pascaseeding berada di `%LOCALAPPDATA%\\MSBD-KEL7-Backups`;
+keduanya lolos pemeriksaan TOC. Hash keduanya dicatat pada progres eksekusi lokal.
+
+## Laravel fresh-install/reset
+
+`database/schema/pgsql-schema.sql` adalah baseline skema untuk `php artisan migrate:fresh --seed`.
+Dump tersebut memuat struktur objek PostgreSQL dan ledger migrasi, bukan data aplikasi. Perintah
+fresh menghapus seluruh data tabel sebelum menjalankan seeder. Jalankan pada database lokal yang
+benar setelah backup diverifikasi. Role PostgreSQL bersifat cluster-wide dan privilege objek tidak
+termasuk dalam schema dump; setelah seeding, jalankan `dcl/01_roles.sql`,
+`dcl/04_login_roles_dev.sql`, `dcl/02_privileges.sql`, lalu `dcl/03_hardening.sql` sebagai admin.
+`02_privileges.sql` memberi `app_login` izin ledger migrasi agar perintah Artisan berikutnya tetap
+bisa membaca/menulis tabel `migrations`. Koneksi Laravel memakai `search_path=public`; PostgreSQL
+tetap memprioritaskan `pg_catalog` secara implisit. Script role dev menjaga `app_login` sebagai
+`NOSUPERUSER`. Jalur fresh diuji ulang pada clone disposable dengan `app_login` non-superuser.
+
+## Riwayat baseline Fase 1
+
+Saat baseline Fase 1 dibuat, paket telah diterapkan secara atomik pada database klon bertanda
+`msbd_latihan_utama` (`FASE1_TRAINING_CLONE`). Pada klon, katalog sesudah berisi 72 tabel, 72 PK,
+96 FK, 13 view, 6 stored function non-trigger, 5 trigger function, 20 trigger, dan 4 procedure.
+Verifier privilege menghasilkan 173 PASS/0 FAIL. Audit FK menemukan 3 FK `NOT VALID` dengan total
+3 baris orphan. Test suite menghasilkan 40 passed, 43 failed, 68 errors, 2 incomplete, exit code 2;
+hasilnya **tidak lulus**.
+
+Catatan lama bahwa paket belum diterapkan pada `msbd_tubes_kel7` adalah snapshot sebelum Fase 2,
+bukan status saat ini. Role PostgreSQL bersifat cluster-wide; enam role Fase 1 masih terlihat pada
+cluster dan jumlah keseluruhan role adalah 25. Pengaturan per-database `app_login` kini diverifikasi
+untuk `msbd_tubes_kel7`.
+
+Rincian lengkap, termasuk keluaran verifier tanpa pemotongan, akar masalah test, seluruh FK, dan
+langkah dari nol ada di [FASE1_LAPORAN.md](./FASE1_LAPORAN.md). Tabel orphan lengkap ada di
 [ORPHAN_REPORT.md](./ORPHAN_REPORT.md).
 
-## Urutan eksekusi aman
+## Menjalankan pada klon baru
 
-Jalankan dari root repository di PowerShell. Gunakan hanya staging atau database klon disposable.
-Jangan mengubah `.env`, dan jangan memakai `migrate:fresh` pada database utama.
+Semua perintah di bawah ini untuk lingkungan uji disposable, bukan database utama. Klon
+`msbd_latihan_utama` sudah ada pada lingkungan run ini; **jangan membuat ulang, menimpa, atau
+menghapusnya tanpa persetujuan eksplisit**. Runner menolak database latihan tanpa marker yang benar.
 
-### 1. Backup dan verifikasi arsip
+1. Siapkan backup custom-format pre-package dari sumber dan verifikasi TOC:
 
-```powershell
-$preDump = Join-Path $env:TEMP ("fase1_staging_pre_stage1_{0}.dump" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
-.\database\sql\verify\backup_staging.ps1 -OutputPath $preDump
-```
+   ```powershell
+   $preDump = Join-Path $env:TEMP ('fase1_primary_pre_{0}.dump' -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+   pg_dump -w --format=custom --no-owner --no-acl -f $preDump -d msbd_tubes_kel7
+   if ($LASTEXITCODE -ne 0) { throw 'pg_dump gagal' }
+   $toc = pg_restore -l $preDump
+   if ($LASTEXITCODE -ne 0 -or @($toc).Count -lt 2) { throw 'Backup tidak lolos pg_restore -l' }
+   ```
 
-Script membaca koneksi dari `.env` tanpa mencetak credential, hanya menerima database staging,
-menyimpan arsip di `%TEMP%`, dan memeriksa TOC dengan `pg_restore -l`.
+   `pg_dump` dan tool PostgreSQL lain perlu kredensial yang sudah dimuat secara aman ke sesi lokal.
+   Jangan menampilkan nilai password ke terminal atau menyimpannya dalam repository.
 
-### 2. Pastikan target dan preflight
+2. Pada lingkungan baru, pulihkan dump ke database latihan kosong dan pasang marker:
 
-```powershell
-psql -X -w -v ON_ERROR_STOP=1 -d msbd_tubes_kel7_staging -c "SELECT current_database(), current_user, version();"
-.\database\sql\jalankan.ps1 -Db msbd_tubes_kel7_staging -File database\sql\ddl\00_preflight_audit.sql
-```
+   ```powershell
+   createdb -w msbd_latihan_utama
+   if ($LASTEXITCODE -ne 0) { throw 'Database klon tidak dapat dibuat; jangan menimpa database yang sudah ada' }
+   pg_restore -w --exit-on-error --no-owner --no-acl -d msbd_latihan_utama $preDump
+   if ($LASTEXITCODE -ne 0) { throw 'Restore klon gagal' }
+   psql -X -w -v ON_ERROR_STOP=1 -d postgres -c "COMMENT ON DATABASE msbd_latihan_utama IS 'FASE1_TRAINING_CLONE';"
+   if ($LASTEXITCODE -ne 0) { throw 'Marker klon gagal dipasang' }
+   ```
 
-Hentikan jika nama database bukan `msbd_tubes_kel7_staging`. Simpan hasil audit `pg_catalog`, kandidat
-PK/UNIQUE/CHECK, dan orphan sebelum perubahan.
+3. Jalankan dry-run paket, periksa seluruh output, lalu apply ke klon saja:
 
-### 3. Dry-run dan perbaikan status
+   ```powershell
+   .\database\sql\verify\jalankan_fase1.ps1 -Database msbd_latihan_utama -AllowTrainingClone -DryRun
+   .\database\sql\verify\jalankan_fase1.ps1 -Database msbd_latihan_utama -AllowTrainingClone
+   ```
 
-```powershell
-.\database\sql\jalankan.ps1 -Db msbd_tubes_kel7_staging -File database\sql\dml\00_repair_status_ids.sql -DryRun
-.\database\sql\dry_run.ps1
-```
+   Runner memverifikasi marker, membuat backup klon di `%TEMP%`, memvalidasi TOC, dan memakai satu
+   transaksi untuk paket. Paket menyertakan `dcl/90_hapus_role_guru.sql`, yang memindahkan akun
+   aplikasi dari role `guru` dan menghapus seluruh baris tabel `sessions` jika tabel itu ada.
+   Tinjau efeknya pada data klon sebelum apply.
 
-Output terkini: 10 PASS, 0 FAIL, exit code 0. Runner menampilkan SKIP untuk
-`dcl/90_hapus_role_guru.sql`; file tersebut tidak boleh dijalankan atau di-dry-run. Dry-run adalah
-verifikasi transaksional, bukan penerapan permanen atau otorisasi untuk database utama.
+4. Verifikasi hasil katalog, privilege, dan orphan:
 
-### 4. Terapkan subset Tahap 1 yang telah diverifikasi
+   ```powershell
+   psql -X -w -v ON_ERROR_STOP=1 -d msbd_latihan_utama -f .\database\sql\verify\00_hitung_objek.sql
+   psql -X -w -v ON_ERROR_STOP=1 -d msbd_latihan_utama -f .\database\sql\verify\01_uji_privilege.sql
+   .\database\sql\verify\hasilkan_orphan_report.ps1 -Database msbd_latihan_utama -AllowTrainingClone
+   ```
 
-```powershell
-.\database\sql\jalankan.ps1 -Db msbd_tubes_kel7_staging -File database\sql\dml\00_repair_status_ids.sql -Atomic
-$prior = @{}
-foreach ($name in @('DB_CONNECTION', 'DB_DATABASE', 'FASE1_TARGET_DB')) {
-    $prior[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
-}
-try {
-    $env:DB_CONNECTION = 'pgsql'
-    $env:DB_DATABASE = 'msbd_tubes_kel7_staging'
-    $env:FASE1_TARGET_DB = 'msbd_tubes_kel7_staging'
-    php artisan migrate --path=database/migrations/2026_11_16_100000_fase1_database_architecture.php --force --no-interaction
-    if ($LASTEXITCODE -ne 0) { throw 'Migration Fase 1 gagal' }
-} finally {
-    foreach ($name in $prior.Keys) {
-        [Environment]::SetEnvironmentVariable($name, $prior[$name], 'Process')
-    }
-}
-.\database\sql\jalankan.ps1 -Db msbd_tubes_kel7_staging -File database\sql\dml\01_sync_sequences.sql
-```
+   Hitung semua baris `PASS` dan `FAIL`; exit code 0 saja bukan bukti semua pemeriksaan lulus.
+   Audit orphan bersifat baca-saja dan tidak memperbaiki data.
 
-Wrapper migration mengecek `FASE1_TARGET_DB` dan hasil `current_database()` sebelum menjalankan
-`ddl/01_restore_constraints.sql` dan `ddl/02_constraint_tambahan.sql`. Jalankan sinkronisasi sequence
-setelah PK terpasang; `setval()` tidak dibatalkan oleh `ROLLBACK`, jadi file sequence tidak cocok untuk
-dry-run transaksional.
+5. Jalankan baseline sebelum apply dan post sesudah apply memakai test runner yang membuat database
+   disposable. Simpan kedua JUnit/log di `%TEMP%`:
 
-### 5. Verifikasi pasca-eksekusi
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\database\sql\verify\test_klon.ps1 -SourceDump $preDump -AllowPrimarySource -JunitPath (Join-Path $env:TEMP 'fase1_baseline.junit.xml') -LogPath (Join-Path $env:TEMP 'fase1_baseline.log')
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\database\sql\verify\test_klon.ps1 -SourceDatabase msbd_latihan_utama -AllowTrainingClone -JunitPath (Join-Path $env:TEMP 'fase1_post.junit.xml') -LogPath (Join-Path $env:TEMP 'fase1_post.log')
+   .\database\sql\verify\bandingkan_test.ps1 -BeforeJunit (Join-Path $env:TEMP 'fase1_baseline.junit.xml') -AfterJunit (Join-Path $env:TEMP 'fase1_post.junit.xml') -BeforeLog (Join-Path $env:TEMP 'fase1_baseline.log') -AfterLog (Join-Path $env:TEMP 'fase1_post.log')
+   ```
 
-```powershell
-.\database\sql\jalankan.ps1 -Db msbd_tubes_kel7_staging -File database\sql\verify\01_uji_privilege.sql
-.\database\sql\verify\hasilkan_objek.ps1 -BeforeDump $preDump
-.\database\sql\verify\hasilkan_orphan_report.ps1
-```
+   Exit code 2 adalah hasil gagal/error suite yang harus ditangani, bukan tanda lulus. Runner
+   menghapus database test disposable setelah run; jangan arahkan Laravel ke database sumber,
+   staging, atau utama.
 
-Generator membaca katalog staging, membandingkan `schema_backup.sql` (83 FK) dan menghitung orphan
-per FK. Katalog aktual Tahap 1 berisi 72 PK dan 96 FK; tiga FK `NOT VALID` memiliki masing-masing
-satu orphan. Verifier aktual menghasilkan 150 FAIL/16 PASS. Kandidat DDL/DCL diuji secara terpisah
-dalam transaksi rollback dan menghasilkan 167 PASS/0 FAIL; jangan menafsirkan hasil kandidat sebagai
-perubahan staging permanen atau menafsirkan exit code 0 saja sebagai semua pemeriksaan lulus.
+## Batas database utama
 
-Contoh seed, query, cleanup, dan TCL diuji pada klon disposable yang dibuat dari staging. Urutannya:
-jalankan `ddl/00_preflight_audit.sql` dan `ddl/03_functions.sql`-`ddl/06_views.sql`, seed dengan
-`dml/01_seed_demo.sql`, lima berkas `tcl/01`-`tcl/05`, `dml/02_query_demo.sql`, lalu
-`dml/99_hapus_data_demo.sql`. Verifikasi akun/siswa/periode demo bernilai `0|0|0` setelah cleanup
-dan hapus klon. Jangan jalankan contoh DML/TCL pada staging atau database utama.
-
-### 6. Jalankan test pada klon disposable
-
-Jalankan runner sebagai proses PowerShell anak; exit 2 saat ini mencerminkan baseline test yang gagal.
-Runner memverifikasi koneksi Laravel ke klon PostgreSQL dan menghapus klon/dump sementara:
-
-```powershell
-powershell.exe -NoProfile -File .\database\sql\verify\test_klon.ps1 -SourceDump $preDump -JunitPath (Join-Path $env:TEMP 'fase1_baseline.junit.xml') -LogPath (Join-Path $env:TEMP 'fase1_baseline.log')
-powershell.exe -NoProfile -File .\database\sql\verify\test_klon.ps1 -SourceDatabase msbd_tubes_kel7_staging -JunitPath (Join-Path $env:TEMP 'fase1_post.junit.xml') -LogPath (Join-Path $env:TEMP 'fase1_post.log')
-.\database\sql\verify\bandingkan_test.ps1 -BeforeJunit (Join-Path $env:TEMP 'fase1_baseline.junit.xml') -AfterJunit (Join-Path $env:TEMP 'fase1_post.junit.xml') -BeforeLog (Join-Path $env:TEMP 'fase1_baseline.log') -AfterLog (Join-Path $env:TEMP 'fase1_post.log')
-```
-
-Jangan memakai langsung staging, database utama, atau klon yang akan digunakan ulang.
-
-## Perilaku runner SQL
-
-`jalankan.ps1` mewajibkan `-Db` dan `-File`, memastikan file berada di `database\sql`, lalu
-memverifikasi bahwa `current_database()` cocok dengan `-Db`. Runner membaca koneksi dari `.env`
-tanpa mencetak nilainya; alternatifnya memakai environment `PGHOST`, `PGPORT`, `PGUSER`, dan
-`PGPASSWORD`.
-
-```powershell
-.\database\sql\jalankan.ps1 -Db msbd_tubes_kel7_staging -File database\sql\verify\01_uji_privilege.sql
-```
-
-`-DryRun` menjalankan berkas dalam transaksi dan `ROLLBACK`; `-Atomic` menjalankan satu file dengan
-`--single-transaction`. `-Konfirmasi` hanya mengizinkan target non-staging setelah verifikasi, bukan
-pengganti backup atau otorisasi.
+`jalankan_fase1.ps1` memiliki konfirmasi eksplisit untuk database utama, tetapi keberadaan flag
+tersebut bukan persetujuan untuk deploy. Jangan jalankan dengan `-ConfirmPrimary` sampai gate
+privilege, orphan, test, TODO-REVIEW, backup/restore, dan otorisasi deploy dinyatakan lulus.

@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param (
     [string] $Database = 'msbd_tubes_kel7_staging',
-    [string] $ReportPath
+    [string] $ReportPath,
+    [switch] $AllowTrainingClone,
+    [switch] $ConfirmPrimary,
+    [string] $ConfirmTarget
 )
 
 $ErrorActionPreference = 'Stop'
@@ -10,8 +13,17 @@ $environmentFile = Join-Path $repositoryRoot '.env'
 $schemaBackupPath = Join-Path $repositoryRoot 'database\sql\schema_backup.sql'
 $queryFile = Join-Path $PSScriptRoot '02_orphan_audit.sql'
 
-if ($Database -ne 'msbd_tubes_kel7_staging') {
-    throw 'Laporan orphan hanya boleh dibaca dari msbd_tubes_kel7_staging.'
+if ($Database -notin @('msbd_tubes_kel7_staging', 'msbd_latihan_utama', 'msbd_tubes_kel7')) {
+    throw 'Database audit harus staging, klon latihan bertanda, atau utama dengan konfirmasi.'
+}
+if ($Database -eq 'msbd_latihan_utama' -and -not $AllowTrainingClone) {
+    throw 'Klon latihan memerlukan switch -AllowTrainingClone.'
+}
+if ($Database -eq 'msbd_tubes_kel7' -and (-not $ConfirmPrimary -or $ConfirmTarget -cne 'msbd_tubes_kel7')) {
+    throw 'Database utama memerlukan -ConfirmPrimary dan -ConfirmTarget msbd_tubes_kel7.'
+}
+if ($Database -ne 'msbd_tubes_kel7' -and ($ConfirmPrimary -or -not [string]::IsNullOrWhiteSpace($ConfirmTarget))) {
+    throw 'Konfirmasi utama hanya valid untuk msbd_tubes_kel7.'
 }
 if ([string]::IsNullOrWhiteSpace($ReportPath)) {
     $ReportPath = Join-Path $repositoryRoot 'database\sql\ORPHAN_REPORT.md'
@@ -59,7 +71,19 @@ function Normalize-Columns {
 }
 
 try {
-    $queryOutput = & $psql -X -w -v ON_ERROR_STOP=1 -A -t -F "`t" -d $Database -f $queryFile 2>&1
+    if ($Database -eq 'msbd_latihan_utama') {
+        $trainingMarker = (& $psql -X -w -A -t -v ON_ERROR_STOP=1 -d postgres -c "SELECT COALESCE(shobj_description(oid, 'pg_database'), '') FROM pg_database WHERE datname = 'msbd_latihan_utama';" 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0 -or $trainingMarker -ne 'FASE1_TRAINING_CLONE') {
+            throw 'Database latihan tidak memiliki marker FASE1_TRAINING_CLONE.'
+        }
+    }
+
+    $queryArguments = @('-X', '-w', '-v', 'ON_ERROR_STOP=1', '-A', '-t', '-F', "`t", '-d', $Database)
+    if ($Database -eq 'msbd_tubes_kel7') {
+        $queryArguments += @('-c', "SET fase1.confirmed_target = '$Database';")
+    }
+    $queryArguments += @('-f', $queryFile)
+    $queryOutput = & $psql @queryArguments 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "Audit orphan gagal pada $Database dengan exit code $LASTEXITCODE."
     }
@@ -122,7 +146,7 @@ try {
         $childTable = ($row.ChildTable -split '\.')[-1].Trim('"').ToLowerInvariant()
         $key = $childTable + '|' + $row.Constraint
         if ($actualKeys.ContainsKey($key)) {
-            throw "FK duplikat pada katalog staging: $key"
+            throw "FK duplikat pada katalog $Database`: $key"
         }
         $actualKeys[$key] = $row
 
@@ -153,19 +177,19 @@ try {
     $orphanRows = ($rows | Measure-Object -Property Orphans -Sum).Sum
     $baselineNotes = @()
     if ($missingBaseline.Count -eq 0) {
-        $baselineNotes += 'Tidak ada FK baseline yang hilang dari katalog staging.'
+        $baselineNotes += 'Tidak ada FK baseline yang hilang dari katalog ' + $Database + '.'
     } else {
-        $baselineNotes += 'FK baseline yang tidak ditemukan: ' + (($missingBaseline | ForEach-Object { '`' + $_.Replace('|', '.') + '`' }) -join ', ')
+        $baselineNotes += 'FK baseline yang tidak ditemukan dari katalog ' + $Database + ': ' + (($missingBaseline | ForEach-Object { '`' + $_.Replace('|', '.') + '`' }) -join ', ')
     }
     if ($definitionMismatches.Count -eq 0) {
-        $baselineNotes += 'Tidak ada perbedaan tabel/kolom/parent/ON DELETE pada FK baseline yang ditemukan.'
+        $baselineNotes += 'Tidak ada perbedaan tabel/kolom/parent/ON DELETE pada FK baseline yang ditemukan di ' + $Database + '.'
     } else {
         $baselineNotes += 'Definisi FK berbeda dari schema_backup.sql: ' + (($definitionMismatches | ForEach-Object { '`' + $_.Replace('|', '.') + '`' }) -join ', ')
     }
 
     $summaryLines = @(
-        "- Basis `schema_backup.sql`: **$($baselineKeys.Count) FK**; definisi cocok penuh dengan katalog staging: **$matchedCount**; definisi berbeda: **$($definitionMismatches.Count)**; tidak ditemukan: **$($missingBaseline.Count)**; FK katalog di luar basis: **$postOnlyCount**.",
-        ('- Katalog staging: **{0} FK** ({1} `VALID`, {2} `NOT VALID`); anti-join menemukan **{3} baris yatim**.' -f $rows.Count, $validCount, $notValidCount, $orphanRows)
+        "- Basis `schema_backup.sql`: **$($baselineKeys.Count) FK**; definisi cocok penuh dengan katalog $Database`: **$matchedCount**; definisi berbeda: **$($definitionMismatches.Count)**; tidak ditemukan: **$($missingBaseline.Count)**; FK katalog di luar basis: **$postOnlyCount**.",
+        ('- Katalog {0}: **{1} FK** ({2} `VALID`, {3} `NOT VALID`); anti-join menemukan **{4} baris yatim**.' -f $Database, $rows.Count, $validCount, $notValidCount, $orphanRows)
     )
     foreach ($baselineNote in $baselineNotes) {
         $summaryLines += '- ' + $baselineNote

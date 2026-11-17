@@ -96,6 +96,42 @@ class AksiFormControllerTest extends TestCase
         ]);
     }
 
+    public function test_tu_dapat_menjadwalkan_guru_tanpa_akun_aplikasi(): void
+    {
+        $idMapel = DB::table('mata_pelajaran')->where('nama_mapel', 'Biologi')->value('id_mata_pelajaran');
+
+        $this->withSession($this->sesiTu())
+            ->post(route('akademik.jadwal.simpan'), [
+                'id_semester' => 1,
+                'id_kelas' => 1,
+                'jadwal' => [
+                    [
+                        'hari' => 1,
+                        'jam_mulai' => '07:00',
+                        'jam_selesai' => '07:40',
+                        'id_mata_pelajaran' => $idMapel,
+                        'nama_guru_mapel' => 'Guru Non-Akun',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('akademik.jadwal', ['semester' => 1, 'kelas' => 1]))
+            ->assertSessionHas('success', 'Jadwal pelajaran berhasil disimpan.');
+
+        $this->assertDatabaseHas('guru', [
+            'nama_guru' => 'Guru Non-Akun',
+            'id_pengguna' => null,
+            'is_aktif' => true,
+        ]);
+
+        $idGuru = DB::table('guru')->where('nama_guru', 'Guru Non-Akun')->value('id_guru');
+        $this->assertDatabaseHas('jadwal_pelajaran', [
+            'id_kelas' => 1,
+            'id_semester' => 1,
+            'id_mata_pelajaran' => $idMapel,
+            'id_guru' => $idGuru,
+        ]);
+    }
+
     public function test_tu_ditolak_menyimpan_baris_jadwal_yang_tidak_lengkap(): void
     {
         $this->withSession($this->sesiTu())

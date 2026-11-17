@@ -70,7 +70,7 @@ Route::get('/beranda', [PageController::class, 'beranda'])
 // NOTIFIKASI
 // =====================================================
 
-Route::middleware('role:siswa,guru,wali_kelas,tu,kepsek')->group(function () {
+Route::middleware('role:siswa,wali_kelas,tu,kepsek')->group(function () {
     Route::get('/notifikasi', [PageController::class, 'notifikasi'])
         ->name('notifikasi');
 
@@ -128,8 +128,6 @@ Route::prefix('siswa')
         Route::get('/kehadiran', [PageController::class, 'absensiSiswa'])
             ->name('absensi');
 
-        Route::get('/rapor', [PageController::class, 'raporSiswa'])
-            ->name('rapor');
     });
 
 // =====================================================
@@ -138,11 +136,8 @@ Route::prefix('siswa')
 
 Route::prefix('guru')
     ->name('guru.')
-    ->middleware('role:guru,wali_kelas')
+    ->middleware('role:wali_kelas')
     ->group(function () {
-        Route::get('/jadwal', [PageController::class, 'jadwalGuru'])
-            ->name('jadwal');
-
         Route::get('/kelas', [PageController::class, 'guruKelas'])
             ->name('kelas');
 
@@ -171,11 +166,6 @@ Route::prefix('guru')
         Route::post('/absensi', [AksiFormController::class, 'absensiSimpan'])
             ->name('absensi.simpan');
 
-        Route::get('/rapor', [PageController::class, 'guruRapor'])
-            ->name('rapor');
-
-        Route::post('/rapor', [AksiFormController::class, 'raporSimpan'])
-            ->name('rapor.simpan');
     });
 
 // =====================================================
@@ -338,9 +328,6 @@ Route::prefix('kepsek')
     ->group(function () {
         Route::get('/', [PageController::class, 'kepsekDashboard'])
             ->name('kepsek.dashboard');
-
-        Route::get('/referensi', [PageController::class, 'kepsekReferensi'])
-            ->name('kepsek.referensi');
 
         Route::prefix('pengguna')
             ->name('admin.')

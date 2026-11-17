@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('title', 'Konfigurasi Akademik')
 @section('heading', 'Konfigurasi Akademik')
-@section('sub', 'Tahun ajaran, semester, kelas, mata pelajaran, dan aturan penilaian. Perubahan tercatat di jejak audit.')
+@section('sub', 'Tahun ajaran, semester, kelas, dan mata pelajaran. Perubahan tercatat di jejak audit.')
 @section('content')
 @php
     $tampil = function ($row, $kol) {
@@ -19,13 +19,6 @@
         <a href="{{ route('akademik.konfigurasi', $k) }}" class="px-3.5 py-1.5 rounded-full border {{ $k === $tab ? 'bg-navy text-paper border-navy' : 'border-line text-navy hover:bg-card' }}">{{ $judul }}</a>
     @endforeach
 </div>
-
-@if ($bobot)
-    <div class="card mb-4 text-sm {{ $bobot['lengkap'] ? 'text-ok' : 'text-bad' }} font-semibold">
-        Total bobot saat ini: {{ rtrim(rtrim(number_format($bobot['total_bobot'], 2, '.', ''), '0'), '.') }}%
-        {{ $bobot['lengkap'] ? '(sudah 100%)' : '(harus tepat 100% sebelum nilai akhir dihitung)' }}
-    </div>
-@endif
 
 <form method="GET" class="card mb-4 flex flex-wrap items-end gap-3">
     <div><label class="label">Cari</label><input class="input !w-64" name="cari" value="{{ $cari }}" placeholder="Ketik lalu tekan Cari"></div>

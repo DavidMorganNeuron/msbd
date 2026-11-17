@@ -69,7 +69,7 @@ class AksiFormController extends Controller
             ->with('success', 'Konfirmasi data berhasil disimpan.');
     }
 
-    public function pengajuanSiswa(Request $request, PengaturanService $pengaturan)
+    public function pengajuanSiswa(Request $request, PengaturanService $pengaturan, PengajuanPerubahanService $pengajuanService)
     {
         $maksMb = max(1, (int) ($pengaturan->nilai('ukuran_berkas_mb') ?: 2));
         $maksKb = $maksMb * 1024;
@@ -120,23 +120,17 @@ class AksiFormController extends Controller
             ? $request->file('bukti')->store('bukti-pengajuan', 'private')
             : null;
 
-        DB::transaction(function () use ($siswa, $periode, $field, $nilaiLama, $data, $path) {
-            $id = DB::table('pengajuan_perubahan')->insertGetId([
-                'id_siswa' => $siswa->id_siswa,
-                'id_periode_update' => $periode->id_periode_update,
-                'tgl_pengajuan' => now(),
-                'status_pengajuan' => 'menunggu',
-                'alasan' => 'Perubahan '.$field->label_field,
-            ], 'id_pengajuan');
-
-            DB::table('detail_pengajuan')->insert([
-                'id_pengajuan' => $id,
-                'nama_field' => $field->nama_kolom,
-                'nilai_lama' => json_encode($nilaiLama),
-                'nilai_baru' => json_encode($data['nilai_baru']),
+        $pengajuanService->ajukan(
+            (int) $siswa->id_siswa,
+            (int) $periode->id_periode_update,
+            'Perubahan '.$field->label_field,
+            [[
+                'nama_field' => (string) $field->nama_kolom,
+                'nilai_lama' => $nilaiLama,
+                'nilai_baru' => $data['nilai_baru'],
                 'bukti_path' => $path,
-            ]);
-        });
+            ]]
+        );
 
         return redirect()
             ->route('siswa.pengajuan')
@@ -300,22 +294,15 @@ class AksiFormController extends Controller
         $statusIds = $this->statusKehadiranIds();
 
         DB::transaction(function () use ($data, $semester, $anggota, $statusIds, $idGuru) {
-            DB::table('kelas')
-                ->where('id_kelas', $data['id_kelas'])
-                ->lockForUpdate()
-                ->first(['id_kelas']);
-
             $sesi = DB::table('sesi_absensi')
                 ->where('id_kelas', $data['id_kelas'])
                 ->where('id_semester', $semester->id_semester)
                 ->where('tanggal', $data['tanggal'])
                 ->lockForUpdate()
-                ->first();
+                ->first(['id_sesi']);
 
-            if ($sesi) {
-                $idSesi = $sesi->id_sesi;
-            } else {
-                $idSesi = DB::table('sesi_absensi')->insertGetId([
+            if (! $sesi) {
+                DB::table('sesi_absensi')->insertOrIgnore([
                     'id_jadwal' => null,
                     'id_kelas' => $data['id_kelas'],
                     'id_semester' => $semester->id_semester,
@@ -323,8 +310,21 @@ class AksiFormController extends Controller
                     'tanggal' => $data['tanggal'],
                     'topik_materi' => 'Presensi harian wali kelas',
                     'status_sesi' => 'dibuka',
-                ], 'id_sesi');
+                ]);
+
+                $sesi = DB::table('sesi_absensi')
+                    ->where('id_kelas', $data['id_kelas'])
+                    ->where('id_semester', $semester->id_semester)
+                    ->where('tanggal', $data['tanggal'])
+                    ->lockForUpdate()
+                    ->first(['id_sesi']);
             }
+
+            if (! $sesi) {
+                throw new \RuntimeException('Sesi absensi harian tidak dapat dibuat atau ditemukan.');
+            }
+
+            $idSesi = $sesi->id_sesi;
 
             foreach ($anggota as $idSiswa) {
                 $kode = $data['status'][$idSiswa] ?? 'H';
@@ -465,7 +465,7 @@ class AksiFormController extends Controller
             $rapor = DB::table('rapor')
                 ->where('id_anggota', $anggota->id_keanggotaan)
                 ->where('id_semester', $semester->id_semester)
-                ->first();
+                ->first(['id_rapor']);
 
             $isi = [
                 'id_penyusun' => session('id_pengguna'),
@@ -644,7 +644,7 @@ class AksiFormController extends Controller
                 $rapor = DB::table('rapor')
                     ->where('id_anggota', $anggotaRow->id_keanggotaan)
                     ->where('id_semester', $semester->id_semester)
-                    ->first();
+                    ->first(['id_rapor']);
 
                 if ($tugas === null && $keterampilan === null && $ujian === null) {
                     DB::table('nilai_siswa')
@@ -952,7 +952,10 @@ class AksiFormController extends Controller
 
                 DB::table('mutasi_siswa')->where('id_mutasi', $id)->update($mutasiUpdate);
 
-                $siswa = DB::table('siswa')->where('id_siswa', $mutasi->id_siswa)->lockForUpdate()->first();
+                $siswa = DB::table('siswa')
+                    ->where('id_siswa', $mutasi->id_siswa)
+                    ->lockForUpdate()
+                    ->first(['id_siswa', 'nama_lengkap']);
                 if (! $siswa) {
                     throw ValidationException::withMessages(['keputusan' => 'Data siswa yang dimutasi tidak ditemukan.']);
                 }
@@ -1661,9 +1664,12 @@ class AksiFormController extends Controller
             // Tampilkan pesan RAISE EXCEPTION dari stored procedure agar wali kelas tahu penyebabnya.
             $baris = explode("\n", trim((string) ($e->errorInfo[2] ?? '')));
             $pesanDb = trim($baris[0] ?? '');
-            $pesan = $e->getCode() === 'P0001' && $pesanDb !== ''
-                ? $pesanDb
-                : 'Perubahan tidak dapat diterapkan karena data bentrok (misalnya NIK atau NIS sudah dipakai).';
+            $sqlState = (string) ($e->errorInfo[0] ?? $e->getCode());
+            $pesan = match ($sqlState) {
+                'P0001' => $pesanDb !== '' ? $pesanDb : 'Pengajuan tidak dapat diproses.',
+                '23505' => 'Nilai tertentu pada perubahan sudah digunakan dan harus berbeda.',
+                default => 'Pengajuan tidak dapat diproses karena terjadi kendala sistem. Silakan coba kembali atau hubungi Tata Usaha.',
+            };
 
             return $this->gagal($pesan, 'id_pengajuan');
         }

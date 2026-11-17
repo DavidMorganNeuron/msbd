@@ -12,7 +12,6 @@ class Pengguna extends User
     private const HAK_AKSES_PER_ROLE = [
         'tu' => ['dashboard.view', 'siswa.view', 'siswa.update.approve', 'ppdb.verify', 'akademik.manage'],
         'kepsek' => ['dashboard.view', 'siswa.view', 'user.manage', 'audit.view', 'loginlog.view'],
-        'guru' => ['dashboard.view', 'siswa.view'],
         'wali_kelas' => ['dashboard.view', 'siswa.view', 'siswa.update.approve'],
         'siswa' => ['siswa.update.request'],
     ];

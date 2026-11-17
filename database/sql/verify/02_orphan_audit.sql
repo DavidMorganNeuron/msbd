@@ -1,7 +1,21 @@
+SELECT set_config('fase1.confirmed_target', 'msbd_tubes_kel7', FALSE);
+
 DO $$
 BEGIN
-    IF current_database() <> 'msbd_tubes_kel7_staging' THEN
-        RAISE EXCEPTION 'Orphan audit hanya boleh dijalankan pada msbd_tubes_kel7_staging; database saat ini: %', current_database();
+    IF current_database() NOT IN ('msbd_tubes_kel7_staging', 'msbd_latihan_utama', 'msbd_tubes_kel7') THEN
+        RAISE EXCEPTION 'Orphan audit ditolak pada database %', current_database();
+    END IF;
+    IF current_database() = 'msbd_latihan_utama'
+       AND NOT EXISTS (
+           SELECT 1 FROM pg_database
+           WHERE datname = current_database()
+             AND shobj_description(oid, 'pg_database') = 'FASE1_TRAINING_CLONE'
+       ) THEN
+        RAISE EXCEPTION 'Database latihan tidak memiliki marker FASE1_TRAINING_CLONE';
+    END IF;
+    IF current_database() = 'msbd_tubes_kel7'
+       AND current_setting('fase1.confirmed_target', true) IS DISTINCT FROM current_database() THEN
+        RAISE EXCEPTION 'Database utama memerlukan konfirmasi target dari runner Fase 1';
     END IF;
 END $$;
 

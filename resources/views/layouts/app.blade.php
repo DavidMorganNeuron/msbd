@@ -6,9 +6,8 @@
     $akademikMenu = ['Akademik', [['Konfigurasi Akademik', 'akademik.konfigurasi'], ['Jadwal Pelajaran', 'akademik.jadwal']]];
 
     $menu = match ($role) {
-        'siswa'  => [['Utama', [['Beranda', 'siswa.dashboard']]], ['Akademik', [['Jadwal Pelajaran', 'siswa.jadwal'], ['Kehadiran', 'siswa.absensi'], ['Rapor', 'siswa.rapor']]], ['Data Saya', [['Profil Saya', 'siswa.profil'], ['Konfirmasi Data', 'siswa.konfirmasi'], ['Ubah Data', 'siswa.pengajuan']]], $akun],
-        'guru'   => [['Mengajar', [['Jadwal Mengajar', 'guru.jadwal']]], ['Wali Kelas', [['Daftar Siswa Kelas', 'guru.kelas'], ['Kelengkapan Data', 'guru.kelengkapan'], ['Validasi Pengajuan', 'guru.pengajuan'], ['Catatan Wali Kelas', 'guru.catatan'], ['Absensi Kelas', 'guru.absensi'], ['Rapor Siswa', 'guru.rapor']]], $akun],
-        'wali_kelas' => [['Mengajar', [['Jadwal Mengajar', 'guru.jadwal']]], ['Wali Kelas', [['Daftar Siswa Kelas', 'guru.kelas'], ['Kelengkapan Data', 'guru.kelengkapan'], ['Validasi Pengajuan', 'guru.pengajuan'], ['Catatan Wali Kelas', 'guru.catatan'], ['Absensi Kelas', 'guru.absensi'], ['Rapor Siswa', 'guru.rapor']]], $akun],
+        'siswa'  => [['Utama', [['Beranda', 'siswa.dashboard']]], ['Akademik', [['Jadwal Pelajaran', 'siswa.jadwal'], ['Kehadiran', 'siswa.absensi']]], ['Data Saya', [['Profil Saya', 'siswa.profil'], ['Konfirmasi Data', 'siswa.konfirmasi'], ['Ubah Data', 'siswa.pengajuan']]], $akun],
+        'wali_kelas' => [['Wali Kelas', [['Daftar Siswa Kelas', 'guru.kelas'], ['Kelengkapan Data', 'guru.kelengkapan'], ['Validasi Pengajuan', 'guru.pengajuan'], ['Catatan Wali Kelas', 'guru.catatan'], ['Absensi Kelas', 'guru.absensi']]], $akun],
         'tu'     => [
             ['Utama', [['Meja TU', 'tu.dashboard']]],
             ['PPDB', [['Antrean Verifikasi', 'tu.antrean']]],
@@ -18,7 +17,7 @@
         ],
         'kepsek' => [
             ['Utama', [['Ringkasan', 'kepsek.dashboard'], ['Persetujuan Mutasi', 'kepsek.mutasi']]],
-            ['Pengguna & Keamanan', [['Daftar Pengguna', 'admin.pengguna'], ['Wali Kelas & Staf', 'admin.staf'], ['Log Login', 'admin.log'], ['Jejak Audit', 'admin.audit'], ['Pengaturan Sistem', 'admin.pengaturan'], ['Data Referensi PPDB', 'kepsek.referensi']]],
+            ['Pengguna & Keamanan', [['Daftar Pengguna', 'admin.pengguna'], ['Wali Kelas & Staf', 'admin.staf'], ['Log Login', 'admin.log'], ['Jejak Audit', 'admin.audit'], ['Pengaturan Sistem', 'admin.pengaturan']]],
             $akun,
         ],
         default  => [],
@@ -30,14 +29,14 @@
     // ikon tiap menu (nama ikon ada di components/icon.blade.php)
     $ikon = [
         'siswa.dashboard' => 'home', 'siswa.profil' => 'idcard', 'siswa.konfirmasi' => 'check', 'siswa.pengajuan' => 'edit',
-        'siswa.jadwal' => 'calendar', 'siswa.absensi' => 'check', 'siswa.rapor' => 'book',
-        'guru.jadwal' => 'calendar', 'guru.kelas' => 'users', 'guru.kelengkapan' => 'clipboard', 'guru.catatan' => 'book',
-        'guru.pengajuan' => 'file', 'guru.absensi' => 'check', 'guru.rapor' => 'book',
+        'siswa.jadwal' => 'calendar', 'siswa.absensi' => 'check',
+        'guru.kelas' => 'users', 'guru.kelengkapan' => 'clipboard', 'guru.catatan' => 'book',
+        'guru.pengajuan' => 'file', 'guru.absensi' => 'check',
         'tu.dashboard' => 'home', 'tu.antrean' => 'clipboard', 'tu.siswa' => 'folder', 'tu.periode' => 'clock', 'tu.reset' => 'key',
         'tu.mutasi' => 'trend', 'kepsek.mutasi' => 'trend',
         'tu.kelas' => 'cap', 'tu.kenaikan' => 'trend',
         'akademik.konfigurasi' => 'sliders', 'akademik.jadwal' => 'grid',
-        'kepsek.dashboard' => 'chart', 'kepsek.referensi' => 'database',
+        'kepsek.dashboard' => 'chart',
         'admin.pengguna' => 'user', 'admin.staf' => 'briefcase', 'admin.log' => 'key',
         'admin.audit' => 'file', 'admin.pengaturan' => 'gear', 'admin.referensi' => 'database',
         'akun.sandi' => 'lock',

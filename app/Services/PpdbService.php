@@ -150,7 +150,7 @@ class PpdbService
         $data = $this->dariBaris($baris, $this->kosong());
         $berkas = DB::table('dokumen_siswa')
             ->where('id_pendaftaran', $id)
-            ->get()
+            ->get(['id_pendaftaran', 'jenis_dokumen', 'catatan'])
             ->keyBy('jenis_dokumen');
 
         $data['nomor_dokumen_1'] = $berkas['Akta Kelahiran']->catatan ?? '';
@@ -297,6 +297,7 @@ class PpdbService
     {
         $namaSekolah = trim((string) ($input['sekolah_asal'] ?? ''));
         if ($namaSekolah !== '' && ! DB::table('sekolah')
+            ->select('id_sekolah')
             ->whereRaw('LOWER(TRIM(nama_sekolah)) = ?', [mb_strtolower($namaSekolah)])
             ->exists()) {
             DB::table('sekolah')->insert([
@@ -452,9 +453,9 @@ class PpdbService
             ->when($token, fn ($q) => $q->where(fn ($x) => $x->whereNull('token_draf')->orWhere('token_draf', '!=', $token)));
 
         return ($nisn && ((clone $query)->whereRaw('TRIM(nisn) = ?', [$nisn])->exists()
-                || DB::table('siswa')->whereRaw('TRIM(nisn) = ?', [$nisn])->exists()))
+                || DB::table('siswa')->select('id_siswa')->whereRaw('TRIM(nisn) = ?', [$nisn])->exists()))
             || ($nik && ((clone $query)->whereRaw('TRIM(nik) = ?', [$nik])->exists()
-                || DB::table('siswa')->whereRaw('TRIM(nik) = ?', [$nik])->exists()));
+                || DB::table('siswa')->select('id_siswa')->whereRaw('TRIM(nik) = ?', [$nik])->exists()));
     }
 
     public function verifikasi(

@@ -1,4 +1,4 @@
--- Fase 1: pulihkan constraint dari schema_backup.sql pada staging.
+-- Fase 1: pulihkan constraint dari schema_backup.sql pada database yang diizinkan.
 -- PK memakai unique index persis bila tersedia; FK bersih divalidasi, FK yatim dibiarkan NOT VALID.
 DO $fase1$
 DECLARE
@@ -22,8 +22,26 @@ DECLARE
     v_null_predicate text;
     v_match_predicate text;
 BEGIN
-    IF current_database() <> 'msbd_tubes_kel7_staging' THEN
-        RAISE EXCEPTION 'Fase 1 constraint hanya diizinkan pada msbd_tubes_kel7_staging';
+    IF current_database() NOT IN ('msbd_tubes_kel7_staging', 'msbd_latihan_utama', 'msbd_tubes_kel7')
+       AND NOT EXISTS (
+           SELECT 1 FROM pg_database
+           WHERE datname = current_database()
+             AND shobj_description(oid, 'pg_database') = 'FASE1_TRAINING_CLONE'
+       ) THEN
+        RAISE EXCEPTION 'Fase 1 constraint ditolak pada database %', current_database();
+    END IF;
+    IF current_database() <> 'msbd_tubes_kel7'
+       AND current_database() <> 'msbd_tubes_kel7_staging'
+       AND NOT EXISTS (
+           SELECT 1 FROM pg_database
+           WHERE datname = current_database()
+             AND shobj_description(oid, 'pg_database') = 'FASE1_TRAINING_CLONE'
+       ) THEN
+        RAISE EXCEPTION 'Database clone tidak memiliki marker FASE1_TRAINING_CLONE';
+    END IF;
+    IF current_database() = 'msbd_tubes_kel7'
+       AND current_setting('fase1.confirmed_target', true) IS DISTINCT FROM current_database() THEN
+        RAISE EXCEPTION 'Database utama memerlukan konfirmasi target dari runner Fase 1';
     END IF;
 
     FOR v IN SELECT * FROM (VALUES

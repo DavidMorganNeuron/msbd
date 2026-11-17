@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Hash;
  */
 class ResetSandiController extends Controller
 {
-    private const BOLEH = ['siswa', 'guru', 'wali_kelas'];
+    private const BOLEH = ['siswa', 'wali_kelas'];
 
     public function index(Request $r)
     {
@@ -24,7 +24,10 @@ class ResetSandiController extends Controller
 
     public function reset(Request $r, int $id)
     {
-        $user = Pengguna::with('role')->findOrFail($id);
+        $user = Pengguna::query()
+            ->select(['id_pengguna', 'id_role', 'username', 'is_aktif', 'diubah_pada'])
+            ->with('role')
+            ->findOrFail($id);
         abort_unless($user->role && in_array($user->role->nama_role, self::BOLEH, true), 403);
 
         if (! $user->is_aktif) {

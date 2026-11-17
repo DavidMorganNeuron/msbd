@@ -108,7 +108,6 @@ class PpdbFormulirFeatureTest extends TestCase
             $table->id('id_pengguna');
             $table->unsignedBigInteger('id_role')->nullable();
             $table->string('username', 100)->nullable()->unique();
-            $table->string('nama_pengguna', 120)->nullable();
             $table->string('password_hash', 255)->nullable();
             $table->boolean('is_aktif')->default(true);
             $table->timestamp('dibuat_pada')->nullable();
@@ -378,7 +377,7 @@ class PpdbFormulirFeatureTest extends TestCase
         ]);
 
         DB::table('pengguna')->insert([
-            ['id_pengguna' => 100, 'id_role' => 1, 'username' => 'tu01', 'nama_pengguna' => 'tu01', 'password_hash' => 'secret', 'is_aktif' => true],
+            ['id_pengguna' => 100, 'id_role' => 1, 'username' => 'tu01', 'password_hash' => 'secret', 'is_aktif' => true],
         ]);
     }
 
@@ -488,6 +487,8 @@ class PpdbFormulirFeatureTest extends TestCase
     {
         $this->get('/ppdb')
             ->assertOk()
+            ->assertSee('Kabupaten/Kota')
+            ->assertSee('Pilih Provinsi')
             ->assertSee('id="w-kec" name="kec" type="text"', false)
             ->assertSee('id="w-kel" name="kel" type="text"', false)
             ->assertSee('value="05">lain-lain', false)
@@ -1149,7 +1150,6 @@ class PpdbFormulirFeatureTest extends TestCase
         $idPengguna = DB::table('pengguna')->insertGetId([
             'id_role' => 2,
             'username' => 'siswa01',
-            'nama_pengguna' => 'siswa01',
             'password_hash' => Hash::make('SandiLama123'),
             'is_aktif' => true,
         ]);
@@ -1757,7 +1757,7 @@ class PpdbFormulirFeatureTest extends TestCase
             ->assertOk();
     }
 
-    public function test_api_kabupaten_hanya_mengembalikan_kabupaten_pada_provinsi_terpilih(): void
+    public function test_api_kabupaten_kota_mengembalikan_wilayah_pada_provinsi_terpilih(): void
     {
         Schema::dropIfExists('kota');
         Schema::dropIfExists('provinsi');
@@ -1786,11 +1786,18 @@ class PpdbFormulirFeatureTest extends TestCase
             ['id_kota' => 104, 'id_provinsi' => 20, 'nama_kota' => 'Kabupaten Delta'],
         ]);
 
+        $this->get('/ppdb')
+            ->assertOk()
+            ->assertSee('Provinsi A')
+            ->assertSee('Provinsi B')
+            ->assertSee('Kabupaten/Kota');
+
         $this->getJson('/api/kabupaten/10')
             ->assertOk()
             ->assertExactJson([
                 ['id' => 102, 'nama' => 'Kabupaten Alpha'],
                 ['id' => 101, 'nama' => 'Kabupaten Beta'],
+                ['id' => 103, 'nama' => 'Kota Gamma'],
             ]);
 
         $this->getJson('/api/kabupaten/20')

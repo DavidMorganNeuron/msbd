@@ -28,7 +28,7 @@
                 <tr class="border-b border-line">
                     <td class="p-2.5 font-medium">{{ $u->nama }}</td>
                     <td class="p-2.5">{{ $u->username }}</td>
-                    <td class="p-2.5">{{ $u->nama_role === 'wali_kelas' ? 'Wali Kelas' : ($u->nama_role === 'guru' ? 'Guru' : 'Siswa') }}</td>
+                    <td class="p-2.5">{{ $u->nama_role === 'wali_kelas' ? 'Wali Kelas' : 'Siswa' }}</td>
                     <td class="p-2.5"><span class="text-xs font-semibold {{ $u->is_aktif ? 'text-ok' : 'text-mute' }}">{{ $u->is_aktif ? 'Aktif' : 'Nonaktif' }}</span></td>
                     <td class="p-2.5 text-right">
                         @if ($u->is_aktif)

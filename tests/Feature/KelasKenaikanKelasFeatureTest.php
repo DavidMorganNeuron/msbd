@@ -568,6 +568,80 @@ class KelasKenaikanKelasFeatureTest extends TestCase
         $this->assertNotNull($rows[0]->tanggal_selesai);
     }
 
+    public function test_halaman_kenaikan_menjelaskan_prasyarat_kelas_dan_menonaktifkan_proses(): void
+    {
+        $this->seedYear(2024, '2024/2025', '2024-07-01', '2025-06-30');
+        $this->seedYear(2025, '2025/2026', '2025-07-01', '2026-06-30');
+
+        DB::table('kelas')->insert([
+            'id_kelas' => 80,
+            'nama_kelas' => 'X MIA 1',
+            'id_tahun_ajaran' => 2024,
+            'id_tingkat' => 1,
+            'id_jurusan' => 1,
+            'kapasitas' => 32,
+            'is_aktif' => true,
+        ]);
+
+        $idSiswa = $this->attachStudents(['Siswa tanpa kelas tujuan'])[0];
+        DB::table('keanggotaan_kelas')->insert([
+            'id_keanggotaan' => 80,
+            'id_siswa' => $idSiswa,
+            'id_kelas' => 80,
+            'id_semester' => 20241,
+            'tanggal_mulai' => '2024-07-01',
+            'tanggal_selesai' => null,
+            'status' => 'aktif',
+        ]);
+
+        $this->withoutMiddleware([EnsureRole::class])
+            ->withSession(['id_pengguna' => 1, 'role' => 'tu'])
+            ->get(route('tu.kenaikan', ['tahun_ajaran' => 2024]))
+            ->assertOk()
+            ->assertSee('Sebelum memproses, siapkan kelas tujuan')
+            ->assertSee(route('tu.kelas', ['semester' => 20251]), false)
+            ->assertSee('disabled', false);
+    }
+
+    public function test_tu_dapat_memproses_kenaikan_kelas_melalui_rute_form(): void
+    {
+        $this->seedYear(2024, '2024/2025', '2024-07-01', '2025-06-30');
+        $this->seedYear(2025, '2025/2026', '2025-07-01', '2026-06-30');
+
+        DB::table('kelas')->insert([
+            ['id_kelas' => 81, 'nama_kelas' => 'X MIA 1', 'id_tahun_ajaran' => 2024, 'id_tingkat' => 1, 'id_jurusan' => 1, 'kapasitas' => 32, 'is_aktif' => true],
+            ['id_kelas' => 82, 'nama_kelas' => 'X MIA 1', 'id_tahun_ajaran' => 2025, 'id_tingkat' => 1, 'id_jurusan' => 1, 'kapasitas' => 32, 'is_aktif' => true],
+            ['id_kelas' => 83, 'nama_kelas' => 'XI MIA 1', 'id_tahun_ajaran' => 2025, 'id_tingkat' => 2, 'id_jurusan' => 1, 'kapasitas' => 32, 'is_aktif' => true],
+        ]);
+
+        $idSiswa = $this->attachStudents(['Siswa untuk kenaikan kelas'])[0];
+        DB::table('keanggotaan_kelas')->insert([
+            'id_keanggotaan' => 81,
+            'id_siswa' => $idSiswa,
+            'id_kelas' => 81,
+            'id_semester' => 20241,
+            'tanggal_mulai' => '2024-07-01',
+            'tanggal_selesai' => null,
+            'status' => 'aktif',
+        ]);
+
+        $this->withoutMiddleware([EnsureRole::class])
+            ->withSession(['id_pengguna' => 1, 'role' => 'tu'])
+            ->post(route('tu.kenaikan.simpan'), [
+                'id_tahun_ajaran' => 2024,
+                'id_siswa' => [$idSiswa],
+            ])
+            ->assertRedirect(route('tu.kenaikan', ['tahun_ajaran' => 2024]))
+            ->assertSessionHas('success', 'Kenaikan kelas diproses: 1 naik kelas, 0 tidak naik, 0 lulus.');
+
+        $this->assertDatabaseHas('keanggotaan_kelas', [
+            'id_siswa' => $idSiswa,
+            'id_kelas' => 83,
+            'id_semester' => 20251,
+            'status' => 'aktif',
+        ]);
+    }
+
     public function test_tu_penempatan_page_route_is_removed(): void
     {
         $this->get('/tu/penempatan')->assertNotFound();

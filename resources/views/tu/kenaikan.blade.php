@@ -42,7 +42,9 @@
         $asal = $rencana['tahun_asal'];
         $tujuan = $rencana['tahun_tujuan'];
         $semesterTujuan = $rencana['semester_tujuan'];
-        $siap = $tujuan && $semesterTujuan;
+        $kelasBelumDipetakan = collect($rencana['baris'])->contains(fn ($baris) => ! $baris['kelas_tujuan_tinggal']
+            || (! $baris['tingkat_akhir'] && ! $baris['kelas_tujuan']));
+        $siap = $tujuan && $semesterTujuan && ! $kelasBelumDipetakan;
     @endphp
 
     @if (!empty($rencana['peringatan']))
@@ -52,6 +54,22 @@
                     <li>{{ $p }}</li>
                 @endforeach
             </ul>
+        </div>
+    @endif
+    @if (!$tujuan)
+        <div class="card mb-4 text-sm text-mute">
+            Tambahkan tahun ajaran berikutnya dan semester ganjil melalui
+            <a class="text-flame-dark font-semibold" href="{{ route('akademik.konfigurasi', 'tahun-ajaran') }}">Konfigurasi Akademik</a>.
+        </div>
+    @elseif (!$semesterTujuan)
+        <div class="card mb-4 text-sm text-mute">
+            Buat semester ganjil untuk {{ $tujuan->nama_tahun_ajaran }} di
+            <a class="text-flame-dark font-semibold" href="{{ route('akademik.konfigurasi', 'semester') }}">Konfigurasi Akademik &gt; Semester</a>.
+        </div>
+    @elseif ($kelasBelumDipetakan)
+        <div class="card mb-4 text-sm text-mute">
+            Sebelum memproses, siapkan kelas tujuan untuk siswa naik dan kelas yang sama tingkatnya untuk siswa yang tidak naik.
+            <a class="text-flame-dark font-semibold" href="{{ route('tu.kelas', ['semester' => $semesterTujuan->id_semester]) }}">Buka Kelas &amp; Wali Kelas {{ $tujuan->nama_tahun_ajaran }}</a>.
         </div>
     @endif
 
@@ -88,6 +106,9 @@
                                 Tujuan otomatis: <b class="text-ink">{{ $kt['nama'] }}</b>
                             @else
                                 <span class="text-bad">Kelas tujuan belum tersedia pada tahun ajaran tujuan.</span>
+                            @endif
+                            @if (!$baris['kelas_tujuan_tinggal'])
+                                <span class="text-bad">Kelas tingkat yang sama untuk siswa yang tidak naik belum tersedia.</span>
                             @endif
                         </div>
                     </div>

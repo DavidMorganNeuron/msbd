@@ -21,7 +21,10 @@ class PenggunaController extends Controller
 {
     public function update(Request $r, int $id)
     {
-        $user = Pengguna::with('role')->findOrFail($id);
+        $user = Pengguna::query()
+            ->select(['id_pengguna', 'id_role', 'username', 'is_aktif', 'diubah_pada'])
+            ->with('role:id_role,nama_role')
+            ->findOrFail($id);
 
         $data = $r->validate([
             'nama' => ['required', 'string', 'max:150'],
@@ -51,7 +54,7 @@ class PenggunaController extends Controller
         }
 
         $guru = Guru::where('id_pengguna', $user->id_pengguna)->first();
-        $peranGuru = ['guru', 'wali_kelas'];
+        $peranGuru = ['wali_kelas'];
         if (in_array($roleLama, $peranGuru, true)
             && ! in_array($roleBaru->nama_role, $peranGuru, true)
             && $guru
@@ -66,7 +69,7 @@ class PenggunaController extends Controller
                 'diubah_pada' => now(),
             ]);
 
-            if (in_array($roleBaru->nama_role, ['guru', 'wali_kelas'], true)) {
+            if ($roleBaru->nama_role === 'wali_kelas') {
                 Staf::where('id_pengguna', $user->id_pengguna)->get()->each->update(['is_aktif' => false]);
                 Guru::updateOrCreate(['id_pengguna' => $user->id_pengguna], [
                     'nip' => $data['nip'] ?: null,
@@ -91,7 +94,10 @@ class PenggunaController extends Controller
 
     public function ubahStatus(Request $r, int $id)
     {
-        $user = Pengguna::with('role')->findOrFail($id);
+        $user = Pengguna::query()
+            ->select(['id_pengguna', 'id_role', 'username', 'is_aktif', 'diubah_pada'])
+            ->with('role:id_role,nama_role')
+            ->findOrFail($id);
 
         if ((int) $r->session()->get('id_pengguna') === (int) $user->id_pengguna) {
             return back()->withErrors(['status' => 'Kamu tidak dapat menonaktifkan akun sendiri.']);
@@ -112,7 +118,10 @@ class PenggunaController extends Controller
 
     public function destroy(Request $request, int $id): RedirectResponse
     {
-        $user = Pengguna::with('role')->findOrFail($id);
+        $user = Pengguna::query()
+            ->select(['id_pengguna', 'id_role', 'username', 'is_aktif', 'diubah_pada'])
+            ->with('role:id_role,nama_role')
+            ->findOrFail($id);
 
         if ((int) $request->session()->get('id_pengguna') === (int) $user->id_pengguna) {
             return back()->withErrors(['pengguna' => 'Kamu tidak dapat menghapus akun sendiri.']);
@@ -154,7 +163,7 @@ class PenggunaController extends Controller
         $like = '%'.addcslashes($cari, '%_\\').'%';
 
         $guru = DB::table('guru as g')
-            ->leftJoin('pengguna as p', 'p.id_pengguna', '=', 'g.id_pengguna')
+            ->join('pengguna as p', 'p.id_pengguna', '=', 'g.id_pengguna')
             ->leftJoin('role as r', 'r.id_role', '=', 'p.id_role')
             ->when($cari !== '', fn ($q) => $q->where(fn ($w) => $w
                 ->where('g.nama_guru', 'ilike', $like)->orWhere('g.nip', 'ilike', $like)->orWhere('p.username', 'ilike', $like)))

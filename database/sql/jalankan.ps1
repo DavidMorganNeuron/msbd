@@ -14,6 +14,7 @@ param (
 
 $ErrorActionPreference = 'Stop'
 $stagingDatabase = 'msbd_tubes_kel7_staging'
+$trainingDatabase = 'msbd_latihan_utama'
 
 if ([string]::IsNullOrWhiteSpace($Db) -or $Db -notmatch '^[A-Za-z0-9_]+$') {
     throw 'Parameter -Db wajib diisi dengan nama database yang valid.'
@@ -31,8 +32,16 @@ if (-not $DryRun -and $SetupFiles.Count -gt 0) {
     throw '-SetupFiles hanya dapat digunakan bersama -DryRun.'
 }
 
-if ($Db -ne $stagingDatabase -and -not $Konfirmasi) {
-    throw "Database selain $stagingDatabase memerlukan switch -Konfirmasi."
+if ($Db -notin @($stagingDatabase, $trainingDatabase)) {
+    throw "Runner file tunggal hanya mengizinkan $stagingDatabase atau $trainingDatabase; database utama memakai jalankan_fase1.ps1."
+}
+
+if ($Db -eq $trainingDatabase -and -not $Konfirmasi) {
+    throw "Klon latihan memerlukan switch -Konfirmasi."
+}
+
+if ($Db -eq $trainingDatabase -and -not $DryRun -and -not $Atomic) {
+    throw 'Eksekusi pada klon latihan wajib memakai -Atomic atau -DryRun.'
 }
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -118,10 +127,20 @@ try {
         throw "Database diminta $Db tetapi current_database() mengembalikan $actualDatabase."
     }
 
+    if ($Db -eq $trainingDatabase) {
+        $trainingMarker = (& $psqlCommand.Source @connectionArguments -A -t -c "SELECT COALESCE(shobj_description(oid, 'pg_database'), '') FROM pg_database WHERE datname = current_database();" | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0 -or $trainingMarker -ne 'FASE1_TRAINING_CLONE') {
+            throw 'Klon latihan tidak memiliki marker FASE1_TRAINING_CLONE.'
+        }
+    }
+
     Write-Output "current_database=$actualDatabase"
 
     if ($DryRun) {
         $dryRunArguments = $connectionArguments + @('-c', 'BEGIN;', '-c', 'SET LOCAL client_min_messages = warning;')
+        if ($Db -eq $trainingDatabase) {
+            $dryRunArguments += @('-c', "SET LOCAL fase1.confirmed_target = '$Db';")
+        }
 
         foreach ($resolvedSetupFile in $resolvedSetupFiles) {
             $dryRunArguments += @('-f', $resolvedSetupFile)
@@ -130,7 +149,12 @@ try {
         $dryRunArguments += @('-f', $resolvedFile, '-c', 'ROLLBACK;')
         & $psqlCommand.Source @dryRunArguments 2>&1
     } elseif ($Atomic) {
-        & $psqlCommand.Source @connectionArguments --single-transaction -f $resolvedFile 2>&1
+        $atomicArguments = $connectionArguments + @('--single-transaction')
+        if ($Db -eq $trainingDatabase) {
+            $atomicArguments += @('-c', "SET LOCAL fase1.confirmed_target = '$Db';")
+        }
+        $atomicArguments += @('-f', $resolvedFile)
+        & $psqlCommand.Source @atomicArguments 2>&1
     } else {
         & $psqlCommand.Source @connectionArguments -f $resolvedFile 2>&1
     }

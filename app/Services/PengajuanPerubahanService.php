@@ -50,13 +50,22 @@ class PengajuanPerubahanService
         }
 
         return DB::transaction(function () use ($idSiswa, $idPeriode, $alasan, $detail) {
-            $p = PengajuanPerubahan::create([
-                'id_siswa' => $idSiswa,
-                'id_periode_update' => $idPeriode,
-                'alasan' => $alasan,
-                'status_pengajuan' => 'menunggu',
-                'tgl_pengajuan' => now(),
-            ]);
+            if (DB::connection()->getDriverName() === 'pgsql') {
+                $pengajuan = DB::selectOne(
+                    'SELECT app_owner.fn_buat_pengajuan_perubahan(?, ?, ?) AS id_pengajuan',
+                    [$idSiswa, $idPeriode, $alasan]
+                );
+
+                $p = PengajuanPerubahan::query()->findOrFail((int) $pengajuan->id_pengajuan);
+            } else {
+                $p = PengajuanPerubahan::create([
+                    'id_siswa' => $idSiswa,
+                    'id_periode_update' => $idPeriode,
+                    'alasan' => $alasan,
+                    'status_pengajuan' => 'menunggu',
+                    'tgl_pengajuan' => now(),
+                ]);
+            }
 
             foreach ($detail as $d) {
                 $nama = trim((string) ($d['nama_field'] ?? ''));
@@ -84,7 +93,7 @@ class PengajuanPerubahanService
                 ]);
             }
 
-            return $p->load('detail');
+            return $p->load('detail:id_detail_pengajuan,id_pengajuan,nama_field,nilai_lama,nilai_baru');
         }, 3);
     }
 
@@ -96,6 +105,23 @@ class PengajuanPerubahanService
 
         DB::transaction(function () use ($id, $petugas, $keputusan, $catatan) {
             $p = PengajuanPerubahan::query()->lockForUpdate()->findOrFail($id);
+
+            $peranPetugas = DB::table('pengguna as p')
+                ->join('role as r', 'r.id_role', '=', 'p.id_role')
+                ->where('p.id_pengguna', $petugas)
+                ->value('r.nama_role');
+
+            if (! in_array($peranPetugas, ['tu', 'wali_kelas'], true)) {
+                throw ValidationException::withMessages([
+                    'pengajuan' => 'Akun ini tidak memiliki peran untuk memproses pengajuan.',
+                ]);
+            }
+
+            if ($peranPetugas === 'wali_kelas' && ! $this->waliKelasMenanganiSiswa($petugas, (int) $p->id_siswa)) {
+                throw ValidationException::withMessages([
+                    'pengajuan' => 'Wali kelas hanya dapat memproses pengajuan siswa di kelas yang diampu pada semester aktif.',
+                ]);
+            }
 
             if ($p->status_pengajuan !== 'menunggu') {
                 throw ValidationException::withMessages(['status' => 'Pengajuan sudah diproses']);

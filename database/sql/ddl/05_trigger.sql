@@ -1,5 +1,7 @@
 -- Trigger function and trigger set for audit, validation, and enrollment logic.
 
+BEGIN;
+
 SET client_min_messages = warning;
 
 CREATE OR REPLACE FUNCTION public.fn_konfirmasi_terbuka()
@@ -142,6 +144,38 @@ BEGIN
             v_id_data := COALESCE(v_new, v_old)->>'id_mutasi';
         WHEN 'pendaftaran_ppdb' THEN
             v_id_data := COALESCE(v_new, v_old)->>'id_pendaftaran';
+        WHEN 'alamat_siswa' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_alamat';
+        WHEN 'dokumen_siswa' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_dokumen';
+        WHEN 'keanggotaan_kelas' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_keanggotaan';
+        WHEN 'kelas' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_kelas';
+        WHEN 'orang_tua_wali' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_orang_tua_wali';
+        WHEN 'semester' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_semester';
+        WHEN 'tahun_ajaran' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_tahun_ajaran';
+        WHEN 'agama' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_agama';
+        WHEN 'pekerjaan' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_pekerjaan';
+        WHEN 'sekolah' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_sekolah';
+        WHEN 'status_siswa' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_status_siswa';
+        WHEN 'jenis_dokumen' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_jenis_dokumen';
+        WHEN 'ref_checklist_item' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_item';
+        WHEN 'ref_alasan_pengembalian' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_alasan';
+        WHEN 'ref_field_data' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_field';
+        WHEN 'penugasan_wali_kelas' THEN
+            v_id_data := COALESCE(v_new, v_old)->>'id_penugasan_wali_kelas';
         ELSE
             v_id_data := NULL;
     END CASE;
@@ -216,4 +250,51 @@ CREATE TRIGGER trg_audit_periode_update
 AFTER INSERT OR UPDATE OR DELETE ON public.periode_update
 FOR EACH ROW EXECUTE FUNCTION public.fn_audit_trail();
 
+DROP TRIGGER IF EXISTS trg_audit_agama ON public.agama;
+CREATE TRIGGER trg_audit_agama
+AFTER INSERT OR UPDATE OR DELETE ON public.agama
+FOR EACH ROW EXECUTE FUNCTION public.fn_audit_trail();
+
+DROP TRIGGER IF EXISTS trg_audit_pekerjaan ON public.pekerjaan;
+CREATE TRIGGER trg_audit_pekerjaan
+AFTER INSERT OR UPDATE OR DELETE ON public.pekerjaan
+FOR EACH ROW EXECUTE FUNCTION public.fn_audit_trail();
+
+DROP TRIGGER IF EXISTS trg_audit_sekolah ON public.sekolah;
+CREATE TRIGGER trg_audit_sekolah
+AFTER INSERT OR UPDATE OR DELETE ON public.sekolah
+FOR EACH ROW EXECUTE FUNCTION public.fn_audit_trail();
+
+DROP TRIGGER IF EXISTS trg_audit_status_siswa ON public.status_siswa;
+CREATE TRIGGER trg_audit_status_siswa
+AFTER INSERT OR UPDATE OR DELETE ON public.status_siswa
+FOR EACH ROW EXECUTE FUNCTION public.fn_audit_trail();
+
+DROP TRIGGER IF EXISTS trg_audit_jenis_dokumen ON public.jenis_dokumen;
+CREATE TRIGGER trg_audit_jenis_dokumen
+AFTER INSERT OR UPDATE OR DELETE ON public.jenis_dokumen
+FOR EACH ROW EXECUTE FUNCTION public.fn_audit_trail();
+
+DROP TRIGGER IF EXISTS trg_audit_ref_checklist_item ON public.ref_checklist_item;
+CREATE TRIGGER trg_audit_ref_checklist_item
+AFTER INSERT OR UPDATE OR DELETE ON public.ref_checklist_item
+FOR EACH ROW EXECUTE FUNCTION public.fn_audit_trail();
+
+DROP TRIGGER IF EXISTS trg_audit_ref_alasan_pengembalian ON public.ref_alasan_pengembalian;
+CREATE TRIGGER trg_audit_ref_alasan_pengembalian
+AFTER INSERT OR UPDATE OR DELETE ON public.ref_alasan_pengembalian
+FOR EACH ROW EXECUTE FUNCTION public.fn_audit_trail();
+
+DROP TRIGGER IF EXISTS trg_audit_ref_field_data ON public.ref_field_data;
+CREATE TRIGGER trg_audit_ref_field_data
+AFTER INSERT OR UPDATE OR DELETE ON public.ref_field_data
+FOR EACH ROW EXECUTE FUNCTION public.fn_audit_trail();
+
+DROP TRIGGER IF EXISTS trg_audit_penugasan_wali_kelas ON public.penugasan_wali_kelas;
+CREATE TRIGGER trg_audit_penugasan_wali_kelas
+AFTER INSERT OR UPDATE OR DELETE ON public.penugasan_wali_kelas
+FOR EACH ROW EXECUTE FUNCTION public.fn_audit_trail();
+
 RESET client_min_messages;
+
+COMMIT;

@@ -5,6 +5,7 @@ param (
     [string] $JunitPath,
     [string] $LogPath,
     [switch] $AllowPrimarySource,
+    [switch] $AllowTrainingClone,
     [switch] $UsePestRunner
 )
 
@@ -23,12 +24,16 @@ if (-not [string]::IsNullOrWhiteSpace($SourceDatabase) -and -not [string]::IsNul
     throw 'Gunakan salah satu dari -SourceDatabase atau -SourceDump.'
 }
 
-if ($SourceDatabase -and $SourceDatabase -notin @('msbd_tubes_kel7_staging', 'msbd_tubes_kel7')) {
-    throw 'Sumber database hanya boleh staging; database utama memerlukan -AllowPrimarySource setelah seluruh gerbang A/B/C lulus.'
+if ($SourceDatabase -and $SourceDatabase -notin @('msbd_tubes_kel7_staging', 'msbd_tubes_kel7', 'msbd_latihan_utama')) {
+    throw 'Sumber database hanya boleh staging, klon latihan bertanda, atau database utama dengan -AllowPrimarySource.'
 }
 
 if ($SourceDatabase -eq 'msbd_tubes_kel7' -and -not $AllowPrimarySource) {
     throw 'Klon database utama ditolak tanpa -AllowPrimarySource.'
+}
+
+if ($SourceDatabase -eq 'msbd_latihan_utama' -and -not $AllowTrainingClone) {
+    throw 'Klon latihan ditolak tanpa -AllowTrainingClone.'
 }
 
 if ($SourceDump) {
@@ -111,6 +116,13 @@ try {
     Push-Location $repositoryRoot
 
     if ($SourceDatabase) {
+        if ($SourceDatabase -eq 'msbd_latihan_utama') {
+            $trainingMarker = (& $psql -X -w -A -t -v ON_ERROR_STOP=1 -d postgres -c "SELECT COALESCE(shobj_description(oid, 'pg_database'), '') FROM pg_database WHERE datname = 'msbd_latihan_utama';" 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or $trainingMarker -ne 'FASE1_TRAINING_CLONE') {
+                throw 'Sumber msbd_latihan_utama tidak memiliki marker FASE1_TRAINING_CLONE yang valid.'
+            }
+        }
+
         $ownsTemporaryDump = $true
         $dumpOutput = & $pgDump -w --format=custom --no-owner --no-acl -f $temporaryDump -d $SourceDatabase 2>&1
         if ($LASTEXITCODE -ne 0) {

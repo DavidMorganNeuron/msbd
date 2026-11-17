@@ -13,6 +13,7 @@ class DatabaseSeeder extends Seeder
             ReferensiDataSeeder::class,
             WilayahSeeder::class,
             DemoDataSeeder::class,
+            DemoRoleAccountsSeeder::class,
         ]);
     }
 }

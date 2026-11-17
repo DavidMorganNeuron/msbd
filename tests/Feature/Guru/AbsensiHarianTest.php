@@ -9,12 +9,15 @@ beforeEach(function () {
         'detail_absensi',
         'sesi_absensi',
         'status_kehadiran',
+        'notifikasi',
+        'catatan_wali_kelas',
         'keanggotaan_kelas',
         'penugasan_wali_kelas',
         'guru',
         'mata_pelajaran',
         'kelas',
         'semester',
+        'tahun_ajaran',
         'siswa',
         'pengguna',
         'role',
@@ -58,6 +61,14 @@ beforeEach(function () {
 
     Schema::create('siswa', function (Blueprint $table) {
         $table->id('id_siswa');
+        $table->unsignedBigInteger('id_pengguna')->nullable();
+    });
+
+    Schema::create('tahun_ajaran', function (Blueprint $table) {
+        $table->id('id_tahun_ajaran');
+        $table->string('nama_tahun_ajaran');
+        $table->date('tanggal_mulai')->nullable();
+        $table->boolean('is_aktif')->default(false);
     });
 
     Schema::create('keanggotaan_kelas', function (Blueprint $table) {
@@ -81,6 +92,24 @@ beforeEach(function () {
         $table->string('nama_status');
     });
 
+    Schema::create('catatan_wali_kelas', function (Blueprint $table) {
+        $table->id('id_catatan');
+        $table->unsignedBigInteger('id_siswa');
+        $table->unsignedBigInteger('id_guru');
+        $table->unsignedBigInteger('id_tahun_ajaran');
+        $table->text('isi_catatan');
+        $table->timestamp('tgl_dibuat')->nullable();
+    });
+
+    Schema::create('notifikasi', function (Blueprint $table) {
+        $table->id('id_notifikasi');
+        $table->unsignedBigInteger('id_pengguna');
+        $table->string('judul');
+        $table->text('pesan');
+        $table->boolean('dibaca')->default(false);
+        $table->timestamp('dibuat_pada')->nullable();
+    });
+
     Schema::create('sesi_absensi', function (Blueprint $table) {
         $table->id('id_sesi');
         $table->unsignedBigInteger('id_jadwal')->nullable();
@@ -91,6 +120,7 @@ beforeEach(function () {
         $table->text('topik_materi')->nullable();
         $table->time('jam_dibuka')->nullable();
         $table->string('status_sesi');
+        $table->unique(['id_kelas', 'id_semester', 'tanggal']);
     });
 
     Schema::create('detail_absensi', function (Blueprint $table) {
@@ -100,6 +130,7 @@ beforeEach(function () {
         $table->unsignedBigInteger('id_status_hadir');
         $table->text('keterangan')->nullable();
         $table->timestamp('waktu_dicatat')->nullable();
+        $table->unique(['id_sesi', 'id_siswa']);
     });
 
     Schema::create('mata_pelajaran', function (Blueprint $table) {
@@ -110,8 +141,20 @@ beforeEach(function () {
     DB::table('pengguna')->insert(['id_pengguna' => 1, 'id_role' => 1, 'username' => 'wali01', 'password_hash' => 'hash']);
     DB::table('guru')->insert(['id_guru' => 1, 'id_pengguna' => 1, 'nama_guru' => 'Wali Kelas']);
     DB::table('semester')->insert(['id_semester' => 1, 'nama_semester' => 'Ganjil', 'is_aktif' => true]);
+    DB::table('tahun_ajaran')->insert([
+        'id_tahun_ajaran' => 1,
+        'nama_tahun_ajaran' => '2026/2027',
+        'tanggal_mulai' => '2026-07-01',
+        'is_aktif' => true,
+    ]);
     DB::table('kelas')->insert(['id_kelas' => 1]);
-    DB::table('siswa')->insert(['id_siswa' => 11]);
+    DB::table('siswa')->insert(['id_siswa' => 11, 'id_pengguna' => 2]);
+    DB::table('pengguna')->insert([
+        'id_pengguna' => 2,
+        'id_role' => 1,
+        'username' => 'siswa01',
+        'password_hash' => 'hash',
+    ]);
     DB::table('keanggotaan_kelas')->insert([
         'id_siswa' => 11,
         'id_kelas' => 1,
@@ -154,24 +197,70 @@ it('saves daily class attendance without a lesson schedule', function () {
     ]);
 });
 
-it('rejects report grades below one or above one hundred', function () {
-    DB::table('mata_pelajaran')->insert(['id_mata_pelajaran' => 3]);
-
+it('sends a class note and notification to a student in the homeroom class', function () {
     $this->withSession([
         'id_pengguna' => 1,
         'username' => 'wali01',
         'role' => 'wali_kelas',
-    ])->from(route('guru.rapor'))
-        ->post(route('guru.rapor.simpan'), [
+    ])->post(route('guru.catatan.simpan'), [
+        'id_siswa' => 11,
+        'isi_catatan' => 'Pertahankan perkembangan belajar yang baik.',
+    ])
+        ->assertRedirect(route('guru.catatan'))
+        ->assertSessionHas('success', 'Catatan wali kelas berhasil disimpan.');
+
+    $this->assertDatabaseHas('catatan_wali_kelas', [
+        'id_siswa' => 11,
+        'id_guru' => 1,
+        'id_tahun_ajaran' => 1,
+        'isi_catatan' => 'Pertahankan perkembangan belajar yang baik.',
+    ]);
+    $this->assertDatabaseHas('notifikasi', [
+        'id_pengguna' => 2,
+        'judul' => 'Catatan dari Wali Kelas',
+        'pesan' => 'Wali kelas memberikan catatan: Pertahankan perkembangan belajar yang baik.',
+        'dibaca' => false,
+    ]);
+});
+
+it('reuses the daily attendance session and updates the student status on resubmission', function () {
+    $tanggal = '2026-11-16';
+    $session = [
+        'id_pengguna' => 1,
+        'username' => 'wali01',
+        'role' => 'wali_kelas',
+    ];
+
+    $this->withSession($session)
+        ->post(route('guru.absensi.simpan'), [
             'id_kelas' => 1,
-            'id_mapel' => 3,
-            'nilai_mentah' => [
-                11 => ['tugas' => 0, 'keterampilan' => 101, 'ujian' => 1],
-            ],
+            'tanggal' => $tanggal,
+            'status' => [11 => 'A'],
         ])
-        ->assertRedirect(route('guru.rapor'))
-        ->assertSessionHasErrors([
-            'nilai_mentah.11.tugas',
-            'nilai_mentah.11.keterampilan',
-        ]);
+        ->assertRedirect(route('guru.absensi', ['kelas' => 1, 'tanggal' => $tanggal]));
+
+    $this->withSession($session)
+        ->post(route('guru.absensi.simpan'), [
+            'id_kelas' => 1,
+            'tanggal' => $tanggal,
+            'status' => [11 => 'H'],
+        ])
+        ->assertRedirect(route('guru.absensi', ['kelas' => 1, 'tanggal' => $tanggal]))
+        ->assertSessionHas('success', 'Presensi kelas berhasil disimpan.');
+
+    $this->assertDatabaseCount('sesi_absensi', 1);
+    $this->assertDatabaseHas('detail_absensi', [
+        'id_sesi' => DB::table('sesi_absensi')->value('id_sesi'),
+        'id_siswa' => 11,
+        'id_status_hadir' => DB::table('status_kehadiran')->where('kode', 'H')->value('id_status_hadir'),
+    ]);
+});
+
+it('does not expose the removed homeroom report submission endpoint', function () {
+    $this->withSession([
+        'id_pengguna' => 1,
+        'username' => 'wali01',
+        'role' => 'wali_kelas',
+    ])->post('/guru/rapor')
+        ->assertNotFound();
 });

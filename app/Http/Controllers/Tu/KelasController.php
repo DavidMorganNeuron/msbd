@@ -35,7 +35,7 @@ class KelasController extends Controller
             ->join('role as r', 'r.id_role', '=', 'p.id_role')
             ->where('g.is_aktif', true)
             ->where('p.is_aktif', true)
-            ->whereIn('r.nama_role', ['guru', 'wali_kelas'])
+            ->where('r.nama_role', 'wali_kelas')
             ->orderByRaw("CASE WHEN r.nama_role = 'wali_kelas' THEN 0 ELSE 1 END")
             ->orderBy('g.nama_guru')
             ->get(['g.id_guru', 'g.nama_guru', 'r.nama_role']);
@@ -127,19 +127,28 @@ class KelasController extends Controller
         }
 
         $baris = DB::transaction(function () use ($id) {
-            $p = DB::table('penugasan_wali_kelas as pw')
-                ->join('kelas as k', 'k.id_kelas', '=', 'pw.id_kelas')
-                ->join('guru as g', 'g.id_guru', '=', 'pw.id_guru')
-                ->where('pw.id_penugasan_wali_kelas', $id)->lockForUpdate()
-                ->first(['pw.id_semester', 'k.nama_kelas', 'g.nama_guru']);
-            if (! $p) {
+            $penugasan = DB::table('penugasan_wali_kelas')
+                ->where('id_penugasan_wali_kelas', $id)
+                ->lockForUpdate()
+                ->first(['id_semester', 'id_kelas', 'id_guru']);
+            if (! $penugasan) {
+                return null;
+            }
+
+            $namaKelas = DB::table('kelas')->where('id_kelas', $penugasan->id_kelas)->value('nama_kelas');
+            $namaGuru = DB::table('guru')->where('id_guru', $penugasan->id_guru)->value('nama_guru');
+            if ($namaKelas === null || $namaGuru === null) {
                 return null;
             }
 
             DB::table('penugasan_wali_kelas')->where('id_penugasan_wali_kelas', $id)->delete();
-            AuditCatat::tulis('penugasan_wali_kelas', 'DELETE', $id, ['kelas' => $p->nama_kelas, 'wali' => $p->nama_guru], null);
+            AuditCatat::tulis('penugasan_wali_kelas', 'DELETE', $id, ['kelas' => $namaKelas, 'wali' => $namaGuru], null);
 
-            return $p;
+            return (object) [
+                'id_semester' => $penugasan->id_semester,
+                'nama_kelas' => $namaKelas,
+                'nama_guru' => $namaGuru,
+            ];
         });
         abort_unless($baris, 404);
 
@@ -516,7 +525,7 @@ class KelasController extends Controller
             ->where('g.id_guru', $idGuru)
             ->where('g.is_aktif', true)
             ->where('p.is_aktif', true)
-            ->whereIn('r.nama_role', ['guru', 'wali_kelas'])
+            ->where('r.nama_role', 'wali_kelas')
             ->first(['g.id_guru', 'g.nama_guru']);
     }
 

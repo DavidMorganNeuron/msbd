@@ -18,7 +18,6 @@ class DummyData
     {
         return [
             'siswa' => ['label' => 'Siswa',             'nama' => 'Contoh Siswa'],
-            'guru' => ['label' => 'Wali Kelas', 'nama' => 'Pak Contoh Guru'],
             'wali_kelas' => ['label' => 'Wali Kelas', 'nama' => 'Bu Contoh Wali Kelas'],
             'tu' => ['label' => 'Tata Usaha',        'nama' => 'Pak Contoh TU'],
             'kepsek' => ['label' => 'Kepala Sekolah',    'nama' => 'Bapak Kepala Sekolah'],

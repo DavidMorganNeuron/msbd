@@ -12,8 +12,26 @@ DECLARE
     v_nonnull_predicate text;
     v_has_issue boolean;
 BEGIN
-    IF current_database() <> 'msbd_tubes_kel7_staging' THEN
-        RAISE EXCEPTION 'Fase 1 UNIQUE hanya diizinkan pada msbd_tubes_kel7_staging';
+    IF current_database() NOT IN ('msbd_tubes_kel7_staging', 'msbd_latihan_utama', 'msbd_tubes_kel7')
+       AND NOT EXISTS (
+           SELECT 1 FROM pg_database
+           WHERE datname = current_database()
+             AND shobj_description(oid, 'pg_database') = 'FASE1_TRAINING_CLONE'
+       ) THEN
+        RAISE EXCEPTION 'Fase 1 UNIQUE ditolak pada database %', current_database();
+    END IF;
+    IF current_database() <> 'msbd_tubes_kel7'
+       AND current_database() <> 'msbd_tubes_kel7_staging'
+       AND NOT EXISTS (
+           SELECT 1 FROM pg_database
+           WHERE datname = current_database()
+             AND shobj_description(oid, 'pg_database') = 'FASE1_TRAINING_CLONE'
+       ) THEN
+        RAISE EXCEPTION 'Database clone tidak memiliki marker FASE1_TRAINING_CLONE';
+    END IF;
+    IF current_database() = 'msbd_tubes_kel7'
+       AND current_setting('fase1.confirmed_target', true) IS DISTINCT FROM current_database() THEN
+        RAISE EXCEPTION 'Database utama memerlukan konfirmasi target dari runner Fase 1';
     END IF;
 
     FOR v IN SELECT * FROM (VALUES
@@ -138,8 +156,26 @@ DECLARE
     v_is_valid boolean;
     v_has_issue boolean;
 BEGIN
-    IF current_database() <> 'msbd_tubes_kel7_staging' THEN
-        RAISE EXCEPTION 'Fase 1 CHECK hanya diizinkan pada msbd_tubes_kel7_staging';
+    IF current_database() NOT IN ('msbd_tubes_kel7_staging', 'msbd_latihan_utama', 'msbd_tubes_kel7')
+       AND NOT EXISTS (
+           SELECT 1 FROM pg_database
+           WHERE datname = current_database()
+             AND shobj_description(oid, 'pg_database') = 'FASE1_TRAINING_CLONE'
+       ) THEN
+        RAISE EXCEPTION 'Fase 1 CHECK ditolak pada database %', current_database();
+    END IF;
+    IF current_database() <> 'msbd_tubes_kel7'
+       AND current_database() <> 'msbd_tubes_kel7_staging'
+       AND NOT EXISTS (
+           SELECT 1 FROM pg_database
+           WHERE datname = current_database()
+             AND shobj_description(oid, 'pg_database') = 'FASE1_TRAINING_CLONE'
+       ) THEN
+        RAISE EXCEPTION 'Database clone tidak memiliki marker FASE1_TRAINING_CLONE';
+    END IF;
+    IF current_database() = 'msbd_tubes_kel7'
+       AND current_setting('fase1.confirmed_target', true) IS DISTINCT FROM current_database() THEN
+        RAISE EXCEPTION 'Database utama memerlukan konfirmasi target dari runner Fase 1';
     END IF;
 
     FOR v IN SELECT * FROM (VALUES
@@ -157,7 +193,7 @@ BEGIN
         ('log_audit', 'log_audit_operasi_check', '(((operasi)::text = ANY ((ARRAY[''INSERT''::character varying, ''UPDATE''::character varying, ''DELETE''::character varying])::text[])))'),
         ('nilai_siswa', 'nilai_siswa_nilai_check', '(((nilai >= (0)::numeric) AND (nilai <= (100)::numeric)))'),
         ('orang_tua_wali', 'orang_tua_wali_hubungan_check', '(((hubungan)::text = ANY ((ARRAY[''ayah''::character varying, ''ibu''::character varying, ''wali''::character varying])::text[])))'),
-        ('pendaftaran_ppdb', 'pendaftaran_ppdb_status_pendaftaran_check', '(((status_pendaftaran)::text = ANY ((ARRAY[''menunggu''::character varying, ''diverifikasi''::character varying, ''diterima''::character varying, ''ditolak''::character varying, ''perlu_perbaikan''::character varying])::text[])))'),
+        ('pendaftaran_ppdb', 'pendaftaran_ppdb_status_pendaftaran_check', '(((status_pendaftaran)::text = ANY ((ARRAY[''draf''::character varying, ''menunggu''::character varying, ''diverifikasi''::character varying, ''diterima''::character varying, ''ditolak''::character varying, ''perlu_perbaikan''::character varying])::text[])))'),
         ('pengajuan_perubahan', 'pengajuan_perubahan_status_pengajuan_check', '(((status_pengajuan)::text = ANY ((ARRAY[''menunggu''::character varying, ''disetujui''::character varying, ''ditolak''::character varying, ''perlu_perbaikan''::character varying])::text[])))'),
         ('periode_update', 'periode_update_check', '((tanggal_selesai >= tanggal_mulai))'),
         ('periode_update', 'periode_update_status_check', '(((status)::text = ANY ((ARRAY[''draft''::character varying, ''aktif''::character varying, ''ditutup''::character varying])::text[])))'),

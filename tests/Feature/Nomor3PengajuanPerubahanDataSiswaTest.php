@@ -6,12 +6,16 @@ use App\Http\Controllers\AksiFormController;
 use App\Http\Controllers\Api\PengajuanPerubahanController;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Requests\StorePengajuanPerubahanRequest;
+use App\Models\DetailPengajuan;
 use App\Models\PengajuanPerubahan;
 use App\Services\PengajuanPerubahanService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -24,6 +28,7 @@ class Nomor3PengajuanPerubahanDataSiswaTest extends TestCase
         $this->createNomor3Schema();
         $this->seedNomor3Reference();
         $this->seedNomor3Data();
+        Cache::forget('pengaturan_sistem');
     }
 
     protected function createNomor3Schema(): void
@@ -31,16 +36,25 @@ class Nomor3PengajuanPerubahanDataSiswaTest extends TestCase
         Schema::dropIfExists('notifikasi');
         Schema::dropIfExists('detail_pengajuan');
         Schema::dropIfExists('pengajuan_perubahan');
+        Schema::dropIfExists('pengaturan_sistem');
         Schema::dropIfExists('ref_field_data');
         Schema::dropIfExists('alamat_siswa');
         Schema::dropIfExists('orang_tua_wali');
         Schema::dropIfExists('siswa');
         Schema::dropIfExists('periode_update');
+        Schema::dropIfExists('role');
         Schema::dropIfExists('pengguna');
+
+        Schema::create('role', function (Blueprint $table) {
+            $table->id('id_role');
+            $table->string('kode_role');
+            $table->string('nama_role');
+        });
 
         Schema::create('pengguna', function (Blueprint $table) {
             $table->id('id_pengguna');
-            $table->string('nama_pengguna', 120)->nullable();
+            $table->unsignedBigInteger('id_role')->nullable();
+            $table->string('username', 100)->nullable()->unique();
             $table->boolean('is_aktif')->default(true);
         });
 
@@ -50,6 +64,13 @@ class Nomor3PengajuanPerubahanDataSiswaTest extends TestCase
             $table->string('status', 20)->default('menunggu');
             $table->date('tanggal_mulai');
             $table->date('tanggal_selesai');
+            $table->unsignedBigInteger('id_tahun_ajaran')->nullable();
+        });
+
+        Schema::create('pengaturan_sistem', function (Blueprint $table) {
+            $table->id('id_pengaturan');
+            $table->string('kunci', 120)->unique();
+            $table->text('nilai')->nullable();
         });
 
         Schema::create('siswa', function (Blueprint $table) {
@@ -131,20 +152,26 @@ class Nomor3PengajuanPerubahanDataSiswaTest extends TestCase
 
     protected function seedNomor3Reference(): void
     {
+        DB::table('role')->insert([
+            ['id_role' => 1, 'kode_role' => 'siswa', 'nama_role' => 'siswa'],
+            ['id_role' => 2, 'kode_role' => 'wali_kelas', 'nama_role' => 'wali_kelas'],
+            ['id_role' => 3, 'kode_role' => 'tu', 'nama_role' => 'tu'],
+        ]);
+
         DB::table('ref_field_data')->insert([
             ['id_field' => 1, 'nama_tabel' => 'siswa', 'nama_kolom' => 'nama_lengkap', 'label_field' => 'Nama lengkap', 'boleh_diubah_siswa' => true, 'perlu_bukti' => true],
             ['id_field' => 2, 'nama_tabel' => 'siswa', 'nama_kolom' => 'nik', 'label_field' => 'NIK', 'boleh_diubah_siswa' => true, 'perlu_bukti' => true],
             ['id_field' => 3, 'nama_tabel' => 'siswa', 'nama_kolom' => 'jenis_kelamin', 'label_field' => 'Jenis kelamin', 'boleh_diubah_siswa' => false, 'perlu_bukti' => false],
-            ['id_field' => 4, 'nama_tabel' => 'alamat_siswa', 'nama_kolom' => 'alamat', 'label_field' => 'Alamat', 'boleh_diubah_siswa' => true, 'perlu_bukti' => false],
+            ['id_field' => 4, 'nama_tabel' => 'alamat_siswa', 'nama_kolom' => 'alamat', 'label_field' => 'Alamat', 'boleh_diubah_siswa' => true, 'perlu_bukti' => true],
         ]);
     }
 
     protected function seedNomor3Data(): void
     {
         DB::table('pengguna')->insert([
-            ['id_pengguna' => 10, 'nama_pengguna' => 'siswaA', 'is_aktif' => true],
-            ['id_pengguna' => 11, 'nama_pengguna' => 'siswaB', 'is_aktif' => true],
-            ['id_pengguna' => 20, 'nama_pengguna' => 'tu01', 'is_aktif' => true],
+            ['id_pengguna' => 10, 'id_role' => 1, 'username' => 'siswaA', 'is_aktif' => true],
+            ['id_pengguna' => 11, 'id_role' => 1, 'username' => 'siswaB', 'is_aktif' => true],
+            ['id_pengguna' => 20, 'id_role' => 3, 'username' => 'tu01', 'is_aktif' => true],
         ]);
 
         DB::table('periode_update')->insert([
@@ -160,20 +187,6 @@ class Nomor3PengajuanPerubahanDataSiswaTest extends TestCase
 
     private function prepareStudentProfileSchema(): void
     {
-        Schema::table('pengguna', function (Blueprint $table) {
-            $table->string('username')->nullable();
-            $table->unsignedBigInteger('id_role')->nullable();
-        });
-        Schema::create('role', function (Blueprint $table) {
-            $table->id('id_role');
-            $table->string('kode_role');
-            $table->string('nama_role');
-        });
-        DB::table('role')->insert([
-            'id_role' => 1,
-            'kode_role' => 'siswa',
-            'nama_role' => 'Siswa',
-        ]);
         DB::table('pengguna')->where('id_pengguna', 10)->update([
             'username' => 'siswaA',
             'id_role' => 1,
@@ -437,6 +450,142 @@ class Nomor3PengajuanPerubahanDataSiswaTest extends TestCase
         $this->assertSame('Siswa A', DB::table('siswa')->where('id_siswa', 1)->value('nama_lengkap'));
     }
 
+    public function test_siswa_dapat_mengirim_pengajuan_perubahan_email_dari_form(): void
+    {
+        DB::table('ref_field_data')->insert([
+            'id_field' => 5,
+            'nama_tabel' => 'siswa',
+            'nama_kolom' => 'email',
+            'label_field' => 'Email',
+            'boleh_diubah_siswa' => true,
+            'perlu_bukti' => false,
+        ]);
+
+        $this->withSession([
+            'id_pengguna' => 10,
+            'username' => 'siswaA',
+            'role' => 'siswa',
+            'nama' => 'Siswa A',
+        ])->post(route('siswa.pengajuan.simpan'), [
+            'id_field' => 5,
+            'nilai_baru' => 'siswa.baru@example.test',
+        ])->assertRedirect(route('siswa.pengajuan'))
+            ->assertSessionHas('success', 'Pengajuan perubahan berhasil dikirim dan menunggu validasi wali kelas.');
+
+        $idPengajuan = DB::table('pengajuan_perubahan')
+            ->where('id_siswa', 1)
+            ->value('id_pengajuan');
+
+        $this->assertDatabaseHas('pengajuan_perubahan', [
+            'id_pengajuan' => $idPengajuan,
+            'status_pengajuan' => 'menunggu',
+        ]);
+        $this->assertDatabaseHas('detail_pengajuan', [
+            'id_pengajuan' => $idPengajuan,
+            'nama_field' => 'email',
+        ]);
+
+        $detail = DB::table('detail_pengajuan')
+            ->where('id_pengajuan', $idPengajuan)
+            ->first();
+
+        $this->assertSame(json_encode('a@example.com', JSON_THROW_ON_ERROR), $detail->nilai_lama);
+        $this->assertSame(json_encode('siswa.baru@example.test', JSON_THROW_ON_ERROR), $detail->nilai_baru);
+
+        $detailModel = DetailPengajuan::query()->where('id_pengajuan', $idPengajuan)->firstOrFail();
+
+        $this->assertSame('a@example.com', $detailModel->nilai_lama);
+        $this->assertSame('siswa.baru@example.test', $detailModel->nilai_baru);
+    }
+
+    public function test_siswa_dapat_mengajukan_perubahan_alamat_dengan_bukti(): void
+    {
+        Storage::fake('private');
+        DB::table('alamat_siswa')->insert([
+            'id_siswa' => 1,
+            'alamat' => 'Alamat lama',
+        ]);
+        $bukti = UploadedFile::fake()->createWithContent(
+            'kartu-keluarga.pdf',
+            "%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF",
+            'application/pdf'
+        );
+
+        $this->withSession([
+            'id_pengguna' => 10,
+            'username' => 'siswaA',
+            'role' => 'siswa',
+            'nama' => 'Siswa A',
+        ])->post(route('siswa.pengajuan.simpan'), [
+            'id_field' => 4,
+            'nilai_baru' => 'Alamat baru',
+            'bukti' => $bukti,
+        ])->assertRedirect(route('siswa.pengajuan'))
+            ->assertSessionHas('success', 'Pengajuan perubahan berhasil dikirim dan menunggu validasi wali kelas.');
+
+        $detail = DB::table('detail_pengajuan')->first();
+
+        $this->assertDatabaseHas('detail_pengajuan', [
+            'id_pengajuan' => $detail->id_pengajuan,
+            'nama_field' => 'alamat',
+        ]);
+        Storage::disk('private')->assertExists($detail->bukti_path);
+    }
+
+    public function test_siswa_mendapat_pesan_jika_field_yang_dipilih_mewajibkan_bukti(): void
+    {
+        $this->from(route('siswa.pengajuan'))
+            ->withSession([
+                'id_pengguna' => 10,
+                'username' => 'siswaA',
+                'role' => 'siswa',
+                'nama' => 'Siswa A',
+            ])->post(route('siswa.pengajuan.simpan'), [
+                'id_field' => 4,
+                'nilai_baru' => 'Alamat baru',
+            ])->assertRedirect(route('siswa.pengajuan'))
+            ->assertSessionHasErrors([
+                'bukti' => 'Bukti pendukung wajib dilampirkan untuk perubahan data ini.',
+            ]);
+
+        $this->assertDatabaseCount('pengajuan_perubahan', 0);
+    }
+
+    public function test_siswa_dapat_mengajukan_perubahan_data_orang_tua(): void
+    {
+        DB::table('ref_field_data')->insert([
+            'id_field' => 5,
+            'nama_tabel' => 'orang_tua_wali',
+            'nama_kolom' => 'ayah_email',
+            'label_field' => 'Email ayah',
+            'boleh_diubah_siswa' => true,
+            'perlu_bukti' => false,
+        ]);
+        DB::table('orang_tua_wali')->insert([
+            'id_siswa' => 1,
+            'hubungan' => 'ayah',
+            'nama_lengkap' => 'Ayah Siswa A',
+            'email' => 'ayah.lama@example.test',
+        ]);
+
+        $this->withSession([
+            'id_pengguna' => 10,
+            'username' => 'siswaA',
+            'role' => 'siswa',
+            'nama' => 'Siswa A',
+        ])->post(route('siswa.pengajuan.simpan'), [
+            'id_field' => 5,
+            'nilai_baru' => 'ayah.baru@example.test',
+        ])->assertRedirect(route('siswa.pengajuan'))
+            ->assertSessionHas('success', 'Pengajuan perubahan berhasil dikirim dan menunggu validasi wali kelas.');
+
+        $this->assertDatabaseHas('detail_pengajuan', [
+            'nama_field' => 'ayah_email',
+            'nilai_lama' => json_encode('ayah.lama@example.test', JSON_THROW_ON_ERROR),
+            'nilai_baru' => json_encode('ayah.baru@example.test', JSON_THROW_ON_ERROR),
+        ]);
+    }
+
     public function test_siswa_dapat_mengajukan_nilai_untuk_field_yang_sebelumnya_kosong(): void
     {
         DB::table('siswa')->where('id_siswa', 1)->update(['nik' => null]);
@@ -456,9 +605,12 @@ class Nomor3PengajuanPerubahanDataSiswaTest extends TestCase
         $this->assertDatabaseHas('detail_pengajuan', [
             'id_pengajuan' => $hasil->id_pengajuan,
             'nama_field' => 'nik',
-            'nilai_lama' => null,
-            'nilai_baru' => '3201010101010009',
         ]);
+
+        $detail = DetailPengajuan::query()->where('id_pengajuan', $hasil->id_pengajuan)->firstOrFail();
+
+        $this->assertNull($detail->nilai_lama);
+        $this->assertSame('3201010101010009', $detail->nilai_baru);
         $this->assertNull(DB::table('siswa')->where('id_siswa', 1)->value('nik'));
     }
 
@@ -521,7 +673,7 @@ class Nomor3PengajuanPerubahanDataSiswaTest extends TestCase
         $this->assertNotNull($guruRoute);
         $this->assertNull($tuRoute);
         $this->assertStringContainsString('role:siswa', implode('|', $siswaRoute->gatherMiddleware()));
-        $this->assertStringContainsString('role:guru,wali_kelas', implode('|', $guruRoute->gatherMiddleware()));
+        $this->assertStringContainsString('role:wali_kelas', implode('|', $guruRoute->gatherMiddleware()));
     }
 
     public function test_wali_kelas_dapat_membuka_daftar_pengajuan_dengan_nilai_json(): void
@@ -733,6 +885,103 @@ class Nomor3PengajuanPerubahanDataSiswaTest extends TestCase
 
         $this->expectException(ValidationException::class);
         (new PengajuanPerubahanService)->putuskan($id, 20, 'ditolak', 'lagi');
+    }
+
+    public function test_wali_kelas_hanya_dapat_memutuskan_pengajuan_siswa_di_kelas_aktifnya(): void
+    {
+        Schema::create('semester', function (Blueprint $table) {
+            $table->id('id_semester');
+            $table->date('tanggal_mulai');
+            $table->boolean('is_aktif')->default(false);
+        });
+        Schema::create('guru', function (Blueprint $table) {
+            $table->id('id_guru');
+            $table->unsignedBigInteger('id_pengguna');
+            $table->boolean('is_aktif')->default(true);
+        });
+        Schema::create('kelas', function (Blueprint $table) {
+            $table->id('id_kelas');
+        });
+        Schema::create('penugasan_wali_kelas', function (Blueprint $table) {
+            $table->id('id_penugasan_wali_kelas');
+            $table->unsignedBigInteger('id_kelas');
+            $table->unsignedBigInteger('id_guru');
+            $table->unsignedBigInteger('id_semester');
+        });
+        Schema::create('keanggotaan_kelas', function (Blueprint $table) {
+            $table->id('id_keanggotaan');
+            $table->unsignedBigInteger('id_siswa');
+            $table->unsignedBigInteger('id_kelas');
+            $table->unsignedBigInteger('id_semester');
+            $table->string('status');
+        });
+
+        DB::table('pengguna')->where('id_pengguna', 20)->update(['id_role' => 2]);
+        DB::table('semester')->insert([
+            'id_semester' => 1,
+            'tanggal_mulai' => '2026-01-01',
+            'is_aktif' => true,
+        ]);
+        DB::table('guru')->insert([
+            'id_guru' => 1,
+            'id_pengguna' => 20,
+            'is_aktif' => true,
+        ]);
+        DB::table('penugasan_wali_kelas')->insert([
+            'id_kelas' => 1,
+            'id_guru' => 1,
+            'id_semester' => 1,
+        ]);
+        DB::table('keanggotaan_kelas')->insert([
+            ['id_siswa' => 1, 'id_kelas' => 1, 'id_semester' => 1, 'status' => 'aktif'],
+            ['id_siswa' => 2, 'id_kelas' => 2, 'id_semester' => 1, 'status' => 'aktif'],
+        ]);
+
+        $idAssigned = DB::table('pengajuan_perubahan')->insertGetId([
+            'id_siswa' => 1,
+            'id_periode_update' => 1,
+            'alasan' => 'Perbaikan data',
+            'status_pengajuan' => 'menunggu',
+            'tgl_pengajuan' => now(),
+        ]);
+        $idUnassigned = DB::table('pengajuan_perubahan')->insertGetId([
+            'id_siswa' => 2,
+            'id_periode_update' => 1,
+            'alasan' => 'Perbaikan data',
+            'status_pengajuan' => 'menunggu',
+            'tgl_pengajuan' => now(),
+        ]);
+
+        $service = new PengajuanPerubahanService;
+        $service->putuskan($idAssigned, 20, 'ditolak', 'Bukti perlu diperbaiki.');
+
+        try {
+            $service->putuskan($idUnassigned, 20, 'ditolak', 'Bukti perlu diperbaiki.');
+            $this->fail('Wali kelas tidak boleh memutuskan pengajuan siswa dari kelas lain.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('pengajuan', $exception->errors());
+        }
+
+        $this->assertDatabaseHas('pengajuan_perubahan', [
+            'id_pengajuan' => $idAssigned,
+            'status_pengajuan' => 'ditolak',
+        ]);
+        $this->assertDatabaseHas('pengajuan_perubahan', [
+            'id_pengajuan' => $idUnassigned,
+            'status_pengajuan' => 'menunggu',
+        ]);
+
+        try {
+            $service->putuskan($idUnassigned, 10, 'ditolak', 'Bukti perlu diperbaiki.');
+            $this->fail('Siswa tidak boleh memproses keputusan pengajuan.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('pengajuan', $exception->errors());
+        }
+
+        $this->assertDatabaseHas('pengajuan_perubahan', [
+            'id_pengajuan' => $idUnassigned,
+            'status_pengajuan' => 'menunggu',
+        ]);
     }
 
     public function test_penolakan_tidak_mengubah_data_utama_dan_riwayat_nilai_tersimpan(): void
@@ -982,8 +1231,201 @@ class Nomor3PengajuanPerubahanDataSiswaTest extends TestCase
         ]);
     }
 
-    public function test_proses_disetujui_belum_dapat_diuji_di_sqlite_karena_stored_procedure_postgresql(): void
+    public function test_siswa_dapat_mengirim_pengajuan_melalui_fungsi_definer_tanpa_hak_update_periode(): void
     {
-        $this->markTestIncomplete('Stored procedure sp_setujui_pengajuan adalah PostgreSQL-specific dan tidak tersedia di SQLite in-memory. Proses persetujuan yang mengubah data utama harus diuji di database PostgreSQL terisolasi yang khusus untuk integrasi.');
+        $ownerConnection = DB::connection('pgsql_owner');
+        $studentConnection = DB::connection('pgsql_siswa');
+        $schema = 'test_pengajuan_fn_'.bin2hex(random_bytes(6));
+        $schemaCreated = false;
+
+        try {
+            $ownerConnection->statement('CREATE SCHEMA '.$schema);
+            $schemaCreated = true;
+            $ownerConnection->unprepared(<<<SQL
+CREATE TABLE {$schema}.siswa (
+    id_siswa BIGINT PRIMARY KEY
+);
+CREATE TABLE {$schema}.periode_update (
+    id_periode_update BIGINT PRIMARY KEY,
+    status VARCHAR(20) NOT NULL,
+    tanggal_mulai DATE NOT NULL,
+    tanggal_selesai DATE NOT NULL
+);
+CREATE TABLE {$schema}.pengajuan_perubahan (
+    id_pengajuan BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    id_siswa BIGINT NOT NULL REFERENCES {$schema}.siswa(id_siswa),
+    id_periode_update BIGINT NOT NULL REFERENCES {$schema}.periode_update(id_periode_update),
+    tgl_pengajuan TIMESTAMPTZ NOT NULL,
+    status_pengajuan VARCHAR(30) NOT NULL,
+    alasan TEXT NOT NULL
+);
+SQL);
+            $ownerConnection->table($schema.'.siswa')->insert(['id_siswa' => 1]);
+            $ownerConnection->table($schema.'.periode_update')->insert([
+                'id_periode_update' => 1,
+                'status' => 'aktif',
+                'tanggal_mulai' => now()->toDateString(),
+                'tanggal_selesai' => now()->addDay()->toDateString(),
+            ]);
+
+            $migration = file_get_contents(base_path('database/migrations/2026_11_17_192402_create_security_definer_pengajuan_function.php'));
+            $this->assertIsString($migration);
+            $matchedFunction = preg_match(
+                '/CREATE OR REPLACE FUNCTION app_owner\.fn_buat_pengajuan_perubahan\(.*?\n\$function\$;/s',
+                $migration,
+                $matches
+            );
+            $this->assertSame(1, $matchedFunction);
+
+            $functionSql = str_replace(
+                [
+                    'app_owner.fn_buat_pengajuan_perubahan',
+                    'public.periode_update',
+                    'public.pengajuan_perubahan',
+                ],
+                [
+                    $schema.'.fn_buat_pengajuan_perubahan',
+                    $schema.'.periode_update',
+                    $schema.'.pengajuan_perubahan',
+                ],
+                $matches[0]
+            );
+            $ownerConnection->unprepared($functionSql);
+            $ownerConnection->statement('GRANT USAGE ON SCHEMA '.$schema.' TO role_siswa');
+            $ownerConnection->statement('GRANT EXECUTE ON FUNCTION '.$schema.'.fn_buat_pengajuan_perubahan(bigint, bigint, text) TO role_siswa');
+
+            $roleCheck = $studentConnection->selectOne(
+                "SELECT CASE WHEN has_table_privilege(current_user, '{$schema}.periode_update', 'UPDATE') THEN 'allowed' ELSE 'denied' END AS update_access"
+            );
+            $this->assertSame('denied', $roleCheck->update_access);
+
+            $result = $studentConnection->selectOne(
+                'SELECT '.$schema.'.fn_buat_pengajuan_perubahan(?, ?, ?) AS id_pengajuan',
+                [1, 1, 'Pengujian fungsi definer']
+            );
+
+            $this->assertSame('1', (string) $result->id_pengajuan);
+            $this->assertSame('menunggu', $ownerConnection->table($schema.'.pengajuan_perubahan')->value('status_pengajuan'));
+        } finally {
+            if ($schemaCreated) {
+                $ownerConnection->statement('DROP SCHEMA '.$schema.' CASCADE');
+            }
+
+            DB::purge('pgsql_owner');
+            DB::purge('pgsql_siswa');
+        }
+    }
+
+    public function test_persetujuan_mengubah_data_siswa_dan_menandai_pengajuan_disetujui_di_postgresql(): void
+    {
+        $defaultConnection = DB::getDefaultConnection();
+        $connection = DB::connection('pgsql_owner');
+        $schema = 'test_pengajuan_'.bin2hex(random_bytes(6));
+        $schemaCreated = false;
+
+        try {
+            $connection->statement('CREATE SCHEMA '.$schema);
+            $schemaCreated = true;
+            $connection->statement('SET search_path TO '.$schema.', public');
+            DB::setDefaultConnection('pgsql_owner');
+
+            $connection->unprepared(<<<'SQL'
+CREATE TABLE role (
+    id_role BIGINT PRIMARY KEY,
+    nama_role VARCHAR(100) NOT NULL
+);
+CREATE TABLE pengguna (
+    id_pengguna BIGINT PRIMARY KEY,
+    id_role BIGINT NOT NULL
+);
+CREATE TABLE siswa (
+    id_siswa BIGINT PRIMARY KEY,
+    nama_lengkap VARCHAR(255) NOT NULL,
+    diubah_pada TIMESTAMP NULL
+);
+CREATE TABLE ref_field_data (
+    id_field BIGINT PRIMARY KEY,
+    nama_tabel VARCHAR(100) NOT NULL,
+    nama_kolom VARCHAR(100) NOT NULL,
+    label_field VARCHAR(255) NOT NULL,
+    boleh_diubah_siswa BOOLEAN NOT NULL,
+    perlu_bukti BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE pengajuan_perubahan (
+    id_pengajuan BIGINT PRIMARY KEY,
+    id_siswa BIGINT NOT NULL,
+    status_pengajuan VARCHAR(30) NOT NULL,
+    id_pemeriksa BIGINT NULL,
+    catatan_pemeriksa TEXT NULL,
+    diputuskan_pada TIMESTAMP NULL
+);
+CREATE TABLE detail_pengajuan (
+    id_detail_pengajuan BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    id_pengajuan BIGINT NOT NULL,
+    nama_field VARCHAR(100) NOT NULL,
+    nilai_baru JSONB NULL,
+    bukti_path TEXT NULL
+);
+SQL);
+
+            $migrationPath = base_path('database/migrations/2026_11_08_000003_perbaikan_persetujuan_pengajuan.php');
+            $migration = file_get_contents($migrationPath);
+            $this->assertIsString($migration);
+            $matchedProcedure = preg_match(
+                '/DB::unprepared\(<<<\'SQL\'\R(.*?)\RSQL\);/s',
+                $migration,
+                $matches
+            );
+            $this->assertSame(1, $matchedProcedure);
+
+            $procedureSql = str_replace(
+                'CREATE OR REPLACE PROCEDURE public.sp_setujui_pengajuan',
+                'CREATE OR REPLACE PROCEDURE '.$schema.'.sp_setujui_pengajuan',
+                $matches[1]
+            );
+            $connection->unprepared($procedureSql);
+
+            $connection->table('role')->insert(['id_role' => 1, 'nama_role' => 'tu']);
+            $connection->table('pengguna')->insert(['id_pengguna' => 10, 'id_role' => 1]);
+            $connection->table('siswa')->insert([
+                'id_siswa' => 1,
+                'nama_lengkap' => 'Nama Lama',
+            ]);
+            $connection->table('ref_field_data')->insert([
+                'id_field' => 1,
+                'nama_tabel' => 'siswa',
+                'nama_kolom' => 'nama_lengkap',
+                'label_field' => 'Nama lengkap',
+                'boleh_diubah_siswa' => true,
+                'perlu_bukti' => false,
+            ]);
+            $connection->table('pengajuan_perubahan')->insert([
+                'id_pengajuan' => 1,
+                'id_siswa' => 1,
+                'status_pengajuan' => 'menunggu',
+            ]);
+            $connection->table('detail_pengajuan')->insert([
+                'id_pengajuan' => 1,
+                'nama_field' => 'nama_lengkap',
+                'nilai_baru' => json_encode('Nama Baru', JSON_THROW_ON_ERROR),
+            ]);
+
+            app(PengajuanPerubahanService::class)->putuskan(1, 10, 'disetujui', 'Data diverifikasi.');
+
+            $this->assertSame('Nama Baru', $connection->table('siswa')->where('id_siswa', 1)->value('nama_lengkap'));
+            $this->assertSame('disetujui', $connection->table('pengajuan_perubahan')->where('id_pengajuan', 1)->value('status_pengajuan'));
+            $this->assertSame(10, (int) $connection->table('pengajuan_perubahan')->where('id_pengajuan', 1)->value('id_pemeriksa'));
+            $this->assertSame('Data diverifikasi.', $connection->table('pengajuan_perubahan')->where('id_pengajuan', 1)->value('catatan_pemeriksa'));
+            $this->assertNotNull($connection->table('pengajuan_perubahan')->where('id_pengajuan', 1)->value('diputuskan_pada'));
+        } finally {
+            try {
+                if ($schemaCreated) {
+                    $connection->statement('DROP SCHEMA '.$schema.' CASCADE');
+                }
+            } finally {
+                DB::setDefaultConnection($defaultConnection);
+                DB::purge('pgsql_owner');
+            }
+        }
     }
 }

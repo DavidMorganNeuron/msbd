@@ -2,8 +2,7 @@
 
 namespace App\Observers;
 
-use App\Models\LogAudit;
-use App\Support\AuditPelaku;
+use App\Support\AuditCatat;
 use Illuminate\Database\Eloquent\Model;
 
 class AuditObserver
@@ -71,17 +70,12 @@ class AuditObserver
             return $atribut;
         };
 
-        $pelaku = AuditPelaku::sekarang();
-
-        LogAudit::create([
-            'nama_tabel' => $model->getTable(),
-            'operasi' => $operasi,
-            'id_data' => (string) $model->getKey(),
-            'nilai_lama' => $bersihkan($lama),
-            'nilai_baru' => $bersihkan($baru),
-            'id_pengguna_pengubah' => $pelaku['id'] ?? null,
-            'username_pengubah' => $pelaku['username'] ?? null,
-            'waktu' => now(),
-        ]);
+        AuditCatat::tulis(
+            $model->getTable(),
+            $operasi,
+            $model->getKey(),
+            $bersihkan($lama),
+            $bersihkan($baru),
+        );
     }
 }
